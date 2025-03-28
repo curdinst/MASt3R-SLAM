@@ -28,26 +28,30 @@ import torch
 
 
 mast3r = torch.load('checkpoints/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric.pth')
-# splatt3r = torch.load('checkpoints/splatt3r.ckpt')
-# print(mast3r.keys())
-# print(mast3r['args'])
-# print("---------------------------------------------------------------")
-# print(splatt3r.keys())
+splatt3r = torch.load('checkpoints/splatt3r.ckpt')
+print(mast3r.keys())
+print(mast3r['args'])
+print("---------------------------------------------------------------")
+print(splatt3r.keys())
 
-# mast3r_gaussians = mast3r.copy()
+mast3r_gaussians = mast3r.copy()
+for key in splatt3r['state_dict'].keys():
+    key_modified = key.replace('encoder.', '')
+    mast3r_gaussians['model'][key_modified] = splatt3r['state_dict'][key]
 # mast3r_gaussians['model'] = splatt3r['state_dict']
 
-# torch.save(mast3r_gaussians, 'checkpoints/MASt3R_gaussians.pth')
+torch.save(mast3r_gaussians, 'checkpoints/MASt3R_gaussians_v1.pth')
 # print(splatt3r['state_dict'])
 # print(splatt3r['state_dict'].keys())
 
-mast3r_gaussians = torch.load('checkpoints/MASt3R_gaussians.pth')
-keys = mast3r_gaussians['model'].keys()
-for key in keys:
-    if 'gaussian' in key:
-        print(key)
+# mast3r_gaussians = torch.load('checkpoints/MASt3R_gaussians.pth')
+# keys = mast3r_gaussians['model'].keys()
+# for key in keys:
+#     if 'encoder' in key:
+#         new_key = key.split('.', 1)[1]
+#         mast3r_gaussians['model'][new_key] = mast3r_gaussians['model'].pop(key)
 
-print(mast3r_gaussians['args'])
+# print(mast3r_gaussians['args'])
 
 
 # class MAST3RGaussians(L.LightningModule):

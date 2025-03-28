@@ -185,7 +185,7 @@ if __name__ == "__main__":
             intrinsics["calibration"],
         )
 
-    keyframes = SharedKeyframes(manager, h, w, buffer=7)
+    keyframes = SharedKeyframes(manager, h, w)
     states = SharedStates(manager, h, w)
 
     if not args.no_viz:
@@ -195,30 +195,31 @@ if __name__ == "__main__":
         )
         viz.start()
 
-    encoder = mast3r_model.AsymmetricMASt3R(
-                pos_embed='RoPE100',
-                patch_embed_cls='ManyAR_PatchEmbed',
-                img_size=(512, 512),
-                head_type='gaussian_head',
-                output_mode='pts3d+gaussian+desc24',
-                depth_mode=('exp', -mast3r_model.inf, mast3r_model.inf),
-                conf_mode=('exp', 1, mast3r_model.inf),
-                enc_embed_dim=1024,
-                enc_depth=24,
-                enc_num_heads=16,
-                dec_embed_dim=768,
-                dec_depth=12,
-                dec_num_heads=12,
-                two_confs=True,
-                use_offsets=True,
-                sh_degree=config.sh_degree if hasattr(config, 'sh_degree') else 1
-            )   
+    # encoder = mast3r_model.AsymmetricMASt3R(
+    #             pos_embed='RoPE100',
+    #             patch_embed_cls='ManyAR_PatchEmbed',
+    #             img_size=(512, 512),
+    #             head_type='gaussian_head',
+    #             output_mode='pts3d+gaussian+desc24',
+    #             depth_mode=('exp', -mast3r_model.inf, mast3r_model.inf),
+    #             conf_mode=('exp', 1, mast3r_model.inf),
+    #             enc_embed_dim=1024,
+    #             enc_depth=24,
+    #             enc_num_heads=16,
+    #             dec_embed_dim=768,
+    #             dec_depth=12,
+    #             dec_num_heads=12,
+    #             two_confs=True,
+    #             use_offsets=True,
+    #             sh_degree=config.sh_degree if hasattr(config, 'sh_degree') else 1
+    #         )   
     # print("encoder", encoder)
 
-    model = load_mast3r(device=device, path="checkpoints/MASt3R_gaussians.pth")
+    model = load_mast3r(device=device, path="checkpoints/MASt3R_gaussians_v1.pth")
+    # model = load_mast3r(device=device)
     model.share_memory()
     
-    # print(model)
+    print("loaded model")
 
     has_calib = dataset.has_calib()
     use_calib = config["use_calib"]

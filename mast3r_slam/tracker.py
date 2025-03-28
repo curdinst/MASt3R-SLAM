@@ -10,6 +10,7 @@ from mast3r_slam.geometry import (
 from mast3r_slam.nonlinear_optimizer import check_convergence, huber
 from mast3r_slam.config import config
 from mast3r_slam.mast3r_utils import mast3r_match_asymmetric
+from mast3r_slam.evaluate import save_ply
 
 
 class FrameTracker:
@@ -26,11 +27,13 @@ class FrameTracker:
         self.idx_f2k = None
 
     def track(self, frame: Frame):
+        # print("track")
         keyframe = self.keyframes.last_keyframe()
 
-        idx_f2k, valid_match_k, Xff, Cff, Qff, Xkf, Ckf, Qkf = mast3r_match_asymmetric(
+        idx_f2k, valid_match_k, Xff, Cff, Qff, Xkf, Ckf, Qkf, Sii, Rii, SHii, Oii, Mii, Sji, Rji, SHji, Oji, Mji = mast3r_match_asymmetric(
             self.model, frame, keyframe, idx_i2j_init=self.idx_f2k
         )
+        # print("ran mast3r Xff.shape", Xff.shape)
         # Save idx for next
         self.idx_f2k = idx_f2k.clone()
 
@@ -54,7 +57,7 @@ class FrameTracker:
         Xf, Xk, T_WCf, T_WCk, Cf, Ck, meas_k, valid_meas_k = self.get_points_poses(
             frame, keyframe, idx_f2k, img_size, use_calib, K
         )
-
+        # print("Xf.shape", Xf.shape)
         # Get valid
         # Use canonical confidence average
         valid_Cf = Cf > self.cfg["C_conf"]
@@ -112,6 +115,7 @@ class FrameTracker:
         # Rest idx if new keyframe
         if new_kf:
             self.reset_idx_f2k()
+        # print("Tracking end, new_kf", new_kf)
 
         return (
             new_kf,

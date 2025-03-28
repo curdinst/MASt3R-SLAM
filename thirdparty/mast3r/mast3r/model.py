@@ -35,8 +35,8 @@ def load_model(model_path, device, verbose=True):
         print(f"instantiating : {args}")
     net = eval(args)
     s = net.load_state_dict(ckpt['model'], strict=False)
-    # if verbose:
-    #     print(s)
+    if verbose:
+        print(s)
     return net.to(device)
 
 
