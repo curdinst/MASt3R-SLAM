@@ -23,6 +23,8 @@ from mast3r_slam.multiprocess_utils import new_queue, try_get_msg
 from mast3r_slam.tracker import FrameTracker
 from mast3r_slam.visualization import WindowMsg, run_visualization
 import torch.multiprocessing as mp
+import thirdparty.mast3r.mast3r.model as mast3r_model
+
 
 
 def relocalization(frame, keyframes, factor_graph, retrieval_database):
@@ -170,7 +172,7 @@ if __name__ == "__main__":
     dataset = load_dataset(args.dataset)
     dataset.subsample(config["dataset"]["subsample"])
     h, w = dataset.get_img_shape()[0]
-
+    print("len dataset", len(dataset.rgb_files))
     if args.calib:
         with open(args.calib, "r") as f:
             intrinsics = yaml.load(f, Loader=yaml.SafeLoader)
@@ -183,7 +185,7 @@ if __name__ == "__main__":
             intrinsics["calibration"],
         )
 
-    keyframes = SharedKeyframes(manager, h, w)
+    keyframes = SharedKeyframes(manager, h, w, buffer=7)
     states = SharedStates(manager, h, w)
 
     if not args.no_viz:
@@ -193,8 +195,30 @@ if __name__ == "__main__":
         )
         viz.start()
 
-    model = load_mast3r(device=device)
+    encoder = mast3r_model.AsymmetricMASt3R(
+                pos_embed='RoPE100',
+                patch_embed_cls='ManyAR_PatchEmbed',
+                img_size=(512, 512),
+                head_type='gaussian_head',
+                output_mode='pts3d+gaussian+desc24',
+                depth_mode=('exp', -mast3r_model.inf, mast3r_model.inf),
+                conf_mode=('exp', 1, mast3r_model.inf),
+                enc_embed_dim=1024,
+                enc_depth=24,
+                enc_num_heads=16,
+                dec_embed_dim=768,
+                dec_depth=12,
+                dec_num_heads=12,
+                two_confs=True,
+                use_offsets=True,
+                sh_degree=config.sh_degree if hasattr(config, 'sh_degree') else 1
+            )   
+    # print("encoder", encoder)
+
+    model = load_mast3r(device=device, path="checkpoints/MASt3R_gaussians.pth")
     model.share_memory()
+    
+    # print(model)
 
     has_calib = dataset.has_calib()
     use_calib = config["use_calib"]

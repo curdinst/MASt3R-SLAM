@@ -22,26 +22,31 @@ def load_model(model_path, device, verbose=True):
     if verbose:
         print('... loading model from', model_path)
     ckpt = torch.load(model_path, map_location='cpu')
+    # print(ckpt['hyper_parameters'].keys())
     args = ckpt['args'].model.replace("ManyAR_PatchEmbed", "PatchEmbedDust3R")
     if 'landscape_only' not in args:
         args = args[:-1] + ', landscape_only=False)'
     else:
         args = args.replace(" ", "").replace('landscape_only=True', 'landscape_only=False')
     assert "landscape_only=False" in args
+    args = args.replace("catmlp+dpt", "gaussian_head")
+    args = args.replace("pts3d+desc24", "pts3d+gaussian+desc24")
     if verbose:
         print(f"instantiating : {args}")
     net = eval(args)
     s = net.load_state_dict(ckpt['model'], strict=False)
-    if verbose:
-        print(s)
+    # if verbose:
+    #     print(s)
     return net.to(device)
 
 
 class AsymmetricMASt3R(AsymmetricCroCo3DStereo):
-    def __init__(self, desc_mode=('norm'), two_confs=False, desc_conf_mode=None, **kwargs):
+    def __init__(self, desc_mode=('norm'), two_confs=False, desc_conf_mode=None, use_offsets=False, sh_degree=1, **kwargs):
         self.desc_mode = desc_mode
         self.two_confs = two_confs
         self.desc_conf_mode = desc_conf_mode
+        self.use_offsets = use_offsets
+        self.sh_degree = sh_degree
         super().__init__(**kwargs)
 
     @classmethod
@@ -61,8 +66,9 @@ class AsymmetricMASt3R(AsymmetricCroCo3DStereo):
         if self.desc_conf_mode is None:
             self.desc_conf_mode = conf_mode
         # allocate heads
-        self.downstream_head1 = mast3r_head_factory(head_type, output_mode, self, has_conf=bool(conf_mode))
-        self.downstream_head2 = mast3r_head_factory(head_type, output_mode, self, has_conf=bool(conf_mode))
+        print("allocating heads: ", head_type)
+        self.downstream_head1 = mast3r_head_factory(head_type, output_mode, self, has_conf=bool(conf_mode), use_offsets=self.use_offsets, sh_degree=self.sh_degree)
+        self.downstream_head2 = mast3r_head_factory(head_type, output_mode, self, has_conf=bool(conf_mode), use_offsets=self.use_offsets, sh_degree=self.sh_degree)
         # magic wrapper
         self.head1 = transpose_to_landscape(self.downstream_head1, activate=landscape_only)
         self.head2 = transpose_to_landscape(self.downstream_head2, activate=landscape_only)
