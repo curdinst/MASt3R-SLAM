@@ -200,16 +200,16 @@ def mast3r_asymmetric_inference(model, frame_i, frame_j):
     X, C, D, Q, S, R, SH, O, M  = zip(
         *[(r["pts3d"][0], r["conf"][0], r["desc"][0], r["desc_conf"][0], r["scales"][0], r["rotations"][0], r["sh"][0], r["opacities"][0], r["means"][0]) for r in res]
     )
-    # print("Gaussians sh shape ", res[0].keys())
+    # print("Gaussians sh shape ", res[0][]))
     # 4xhxwxc
     X, C, D, Q = torch.stack(X), torch.stack(C), torch.stack(D), torch.stack(Q)
     S, R, SH, O, M = torch.stack(S), torch.stack(R), torch.stack(SH), torch.stack(O), torch.stack(M)
     X, C, D, Q = downsample(X, C, D, Q)
-    return X, C, D, Q, S, R, SH, O, M
+    return X, C, D, Q, S, R, SH, O, M, res11, res21
 
 
 def mast3r_match_asymmetric(model, frame_i, frame_j, idx_i2j_init=None):
-    X, C, D, Q, S, R, SH, O, M = mast3r_asymmetric_inference(model, frame_i, frame_j)
+    X, C, D, Q, S, R, SH, O, M, res11, res21 = mast3r_asymmetric_inference(model, frame_i, frame_j)
 
     b, h, w = X.shape[:-1]
     # 2 outputs per inference
@@ -229,14 +229,17 @@ def mast3r_match_asymmetric(model, frame_i, frame_j, idx_i2j_init=None):
     Cii, Cji = einops.rearrange(C, "b h w -> b (h w) 1")
     Dii, Dji = einops.rearrange(D, "b h w c -> b (h w) c")
     Qii, Qji = einops.rearrange(Q, "b h w -> b (h w) 1")
-
+    print("frame color: ", einops.rearrange(frame_i.img[0,:, 10:20, 20], "c h -> h c"))
+    print("sh color:", SH[0, 10:20, 20, :, :])
     Sii, Sji = einops.rearrange(S, "b h w c -> b (h w) c")
     Rii, Rji = einops.rearrange(R, "b h w c -> b (h w) c")
     SHii, SHji = einops.rearrange(SH, "b h w c d -> b (h w) c d")
     Oii, Oji = einops.rearrange(O, "b h w c -> b (h w) c")
     Mii, Mji = einops.rearrange(M, "b h w c -> b (h w) c")
 
-    return idx_i2j, valid_match_j, Xii, Cii, Qii, Xji, Cji, Qji, Sii, Rii, SHii, Oii, Mii, Sji, Rji, SHji, Oji, Mji
+ 
+
+    return idx_i2j, valid_match_j, Xii, Cii, Qii, Xji, Cji, Qji, Sii, Rii, SHii, Oii, Mii, Sji, Rji, SHji, Oji, Mji, res11, res21
 
 
 def _resize_pil_image(img, long_edge_size):

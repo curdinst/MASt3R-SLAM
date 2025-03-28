@@ -29,8 +29,10 @@ def load_model(model_path, device, verbose=True):
     else:
         args = args.replace(" ", "").replace('landscape_only=True', 'landscape_only=False')
     assert "landscape_only=False" in args
+    # args = args[:-1] + ', sh_degree=1)'
     args = args.replace("catmlp+dpt", "gaussian_head")
     args = args.replace("pts3d+desc24", "pts3d+gaussian+desc24")
+    print("args", args)
     if verbose:
         print(f"instantiating : {args}")
     net = eval(args)

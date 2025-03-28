@@ -10,7 +10,7 @@ from mast3r_slam.geometry import (
 from mast3r_slam.nonlinear_optimizer import check_convergence, huber
 from mast3r_slam.config import config
 from mast3r_slam.mast3r_utils import mast3r_match_asymmetric
-from mast3r_slam.evaluate import save_ply
+from mast3r_slam.evaluate import save_gaussian_new_ply, save_as_ply
 
 
 class FrameTracker:
@@ -29,10 +29,21 @@ class FrameTracker:
     def track(self, frame: Frame):
         # print("track")
         keyframe = self.keyframes.last_keyframe()
-
-        idx_f2k, valid_match_k, Xff, Cff, Qff, Xkf, Ckf, Qkf, Sii, Rii, SHii, Oii, Mii, Sji, Rji, SHji, Oji, Mji = mast3r_match_asymmetric(
+        # print("frame: ", frame.img.shape)
+        # print("some colors", frame.img[0, :, 10:20, 20])
+        idx_f2k, valid_match_k, Xff, Cff, Qff, Xkf, Ckf, Qkf, Sii, Rii, SHii, Oii, Mii, Sji, Rji, SHji, Oji, Mji, res11, res21 = mast3r_match_asymmetric(
             self.model, frame, keyframe, idx_i2j_init=self.idx_f2k
         )
+
+        filename = "logs/gaussian.ply"
+        save_as_ply(res11, res21, filename)
+        # print("here")
+        # save_gaussian_ply(save_path=filename,
+        #                   S=torch.cat(Sii, Sji),
+        #                   R=torch.cat(Rii,Rji),
+        #                   M=torch.cat(Mii,Mji),
+        #                   SH=torch.cat(SHii, SHji),
+        #                   O=torch.cat(Oii, Oji))
         # print("ran mast3r Xff.shape", Xff.shape)
         # Save idx for next
         self.idx_f2k = idx_f2k.clone()
