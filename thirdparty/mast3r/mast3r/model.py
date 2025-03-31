@@ -32,6 +32,8 @@ def load_model(model_path, device, verbose=True):
     # args = args[:-1] + ', sh_degree=1)'
     args = args.replace("catmlp+dpt", "gaussian_head")
     args = args.replace("pts3d+desc24", "pts3d+gaussian+desc24")
+    args = args.replace("PatchEmbedDust3R", "ManyAR_PatchEmbed")
+    args = args[:-1] + ', use_offsets=False, sh_degree=1)'    
     print("args", args)
     if verbose:
         print(f"instantiating : {args}")
