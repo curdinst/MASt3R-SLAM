@@ -23,7 +23,8 @@ def load_model(model_path, device, verbose=True):
         print('... loading model from', model_path)
     ckpt = torch.load(model_path, map_location='cpu')
     # print(ckpt['hyper_parameters'].keys())
-    args = ckpt['args'].model.replace("ManyAR_PatchEmbed", "PatchEmbedDust3R")
+    # args = ckpt['args'].model.replace("ManyAR_PatchEmbed", "PatchEmbedDust3R")
+    args = ckpt['args'].model
     if 'landscape_only' not in args:
         args = args[:-1] + ', landscape_only=False)'
     else:
@@ -32,7 +33,7 @@ def load_model(model_path, device, verbose=True):
     # args = args[:-1] + ', sh_degree=1)'
     args = args.replace("catmlp+dpt", "gaussian_head")
     args = args.replace("pts3d+desc24", "pts3d+gaussian+desc24")
-    args = args.replace("PatchEmbedDust3R", "ManyAR_PatchEmbed")
+    # args = args.replace("PatchEmbedDust3R", "ManyAR_PatchEmbed")
     args = args[:-1] + ', use_offsets=False, sh_degree=1)'    
     print("args", args)
     if verbose:

@@ -91,6 +91,7 @@ class AsymmetricCroCo3DStereo (
         # duplicate all weights for the second decoder if not present
         new_ckpt = dict(ckpt)
         if not any(k.startswith('dec_blocks2') for k in ckpt):
+            print("Duplicating decoder weights for the second decoder")
             for key, value in ckpt.items():
                 if key.startswith('dec_blocks'):
                     new_ckpt[key.replace('dec_blocks', 'dec_blocks2')] = value
@@ -160,6 +161,7 @@ class AsymmetricCroCo3DStereo (
         # warning! maybe the images have different portrait/landscape orientations
 
         if is_symmetrized(view1, view2):
+        # if True:
             # computing half of forward pass!'
             feat1, feat2, pos1, pos2 = self._encode_image_pairs(img1[::2], img2[::2], shape1[::2], shape2[::2])
             feat1, feat2 = interleave(feat1, feat2)

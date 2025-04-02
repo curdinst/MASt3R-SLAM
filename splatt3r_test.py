@@ -15,6 +15,11 @@ from mast3r_slam.config import load_config, config, set_global_config
 from mast3r_slam.mast3r_utils import mast3r_asymmetric_inference
 from mast3r_slam.evaluate import save_gaussian_new_ply, save_as_ply
 import mast3r_slam.evaluate as eval
+import mast3r_slam.utils.geometry as geometry
+from matplotlib import pyplot as plt
+import einops
+import numpy as np
+
 
 
 # Load images
@@ -59,7 +64,16 @@ camera_intrinsics = Intrinsics.from_calib(
             intrinsics["calibration"],
         )
 
-X, C, D, Q, S, R, SH, O, M, res11, res21 = mast3r_asymmetric_inference(model=model, frame_i=frame1, frame_j=frame2)
+(shape1, shape2), (feat1, feat2), (pos1, pos2) = model._encode_symmetrized(frame1.img, frame2.img, frame1.img_true_shape, frame2.img_true_shape)
+print(frame1.img.shape)
+image1 = einops.rearrange(frame1.img, "b c h w ->(b h) w c")
+image1 = np.clip(image1.cpu().numpy(), 0, 1)
+plt.imsave("logs/feat1.png", image1)
+dec1, dec2 = model._decoder(feat1, pos1, feat2, pos2)
+pred1 = model._downstream_head(1, [tok.float() for tok in dec1], shape1)
+pred1['covariances'] = geometry.build_covariance(pred1['scales'], pred1['rotations'])
+pred2 = model._downstream_head(2, [tok.float() for tok in dec2], shape2)
+# X, C, D, Q, S, R, SH, O, M, res11, res21 = mast3r_asymmetric_inference(model=model, frame_i=frame1, frame_j=frame2)
 
 save_dir = pathlib.Path("logs")
 # if args.save_as != "default":
@@ -70,7 +84,7 @@ recon_file = save_dir / filename
 if recon_file.exists():
     recon_file.unlink()
 
-save_as_ply(res11, res21, recon_file)
+save_as_ply(pred1, pred1, recon_file)
 
 print("predctions done")
 

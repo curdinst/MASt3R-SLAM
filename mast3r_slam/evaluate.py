@@ -178,6 +178,7 @@ def save_as_ply(pred1, pred2, save_path):
     point_cloud = PlyElement.describe(elements, "vertex")
     scene = PlyData([point_cloud])
     scene.write(save_path)
+    print("Saved PLY file to", save_path)
 
 def save_gaussian_new_ply(save_path, S, R, M, SH, O):
     """Save the 3D Gaussians as a point cloud in the PLY format.
@@ -226,11 +227,11 @@ def save_gaussian_new_ply(save_path, S, R, M, SH, O):
     # harmonics = torch.stack([pred1["sh"], pred2["sh"]], dim=1)[..., 0]  # Only use the first harmonic
     # opacities = torch.stack([pred1["opacities"], pred2["opacities"]], dim=1)
 
-    print("S.shape", S.shape)
-    print("R.shape", R.shape)
-    print("M.shape", M.shape)
-    print("SH.shape", SH.shape)
-    print("O.shape", O.shape)
+    # print("S.shape", S.shape)
+    # print("R.shape", R.shape)
+    # print("M.shape", M.shape)
+    # print("SH.shape", SH.shape)
+    # print("O.shape", O.shape)
 
     means = M.detach().cpu().numpy()
     # covariances = C
@@ -241,14 +242,13 @@ def save_gaussian_new_ply(save_path, S, R, M, SH, O):
     # means = einops.rearrange(means[0], "view h w xyz -> (view h w) xyz").detach().cpu().numpy()
     # # covariances = einops.rearrange(covariances[0], "v h w i j -> (v h w) i j")
     # harmonics = einops.rearrange(harmonics, "hw c d-> hw (c d)").detach().cpu().numpy()
-    print("harmonics.shape", harmonics.shape)
+    # print("harmonics.shape", harmonics.shape)
     # opacities = einops.rearrange(opacities[0], "view h w xyz -> (view h w) xyz").detach().cpu().numpy()
 
     # Convert the covariance matrices to quaternions and scales
     # rotations, scales = covariance_to_quaternion_and_scale(covariances)
     rotations = R.detach().cpu().numpy()
     scales = S.detach().cpu().numpy()
-    print(harmonics)
     # Construct the attributes
     rest = np.zeros_like(means)
     
@@ -261,3 +261,4 @@ def save_gaussian_new_ply(save_path, S, R, M, SH, O):
     point_cloud = PlyElement.describe(elements, "vertex")
     scene = PlyData([point_cloud])
     scene.write(save_path)
+    print("Saved PLY file to", save_path)

@@ -9,6 +9,7 @@ from mast3r.model import AsymmetricMASt3R
 from mast3r_slam.retrieval_database import RetrievalDatabase
 from mast3r_slam.config import config
 import mast3r_slam.matching as matching
+from mast3r_slam.utils import sh_utils
 
 
 def load_mast3r(path=None, device="cuda"):
@@ -62,6 +63,10 @@ def mast3r_symmetric_inference(model, frame_i, frame_j):
         frame_j.feat, frame_j.pos, _ = model._encode_image(
             frame_j.img, frame_j.img_true_shape
         )
+    
+    # if frame_i.feat is None or frame_j.feat is None:
+    #     print("Encoding both images")
+    #     (frame_i.img_true_shape, frame_j.img_true_shape), (frame_i.feat, frame_j.feat), (frame_i.pos, frame_j.pos) = model.(frame_i.img, frame_j.img)
 
     feat1, feat2 = frame_i.feat, frame_j.feat
     pos1, pos2 = frame_i.pos, frame_j.pos
@@ -190,6 +195,11 @@ def mast3r_asymmetric_inference(model, frame_i, frame_j):
         frame_j.feat, frame_j.pos, _ = model._encode_image(
             frame_j.img, frame_j.img_true_shape
         )
+    # if frame_i.feat is None or frame_j.feat is None:
+    #     # print(f"Encoding both images, frame_i.feat = {frame_i.feat.shape if frame_i.feat else None}, frame_j.feat = {frame_j.feat.shape if frame_j.feat else None}")
+    #     # print(f"frame_i.img.shape = {frame_i.img.shape}, frame_j.img.shape = {frame_j.img.shape}")
+    #     frame_j_img_reshaped = einops.rearrange(frame_j.img, "(b c) h w -> b c h w ", b=1)
+    #     (frame_i.img_true_shape, frame_j.img_true_shape), (frame_i.feat, frame_j.feat), (frame_i.pos, frame_j.pos) = model._encode_symmetrized(frame_i.img, frame_j_img_reshaped, frame_i.img_true_shape, frame_j.img_true_shape)
 
     feat1, feat2 = frame_i.feat, frame_j.feat
     pos1, pos2 = frame_i.pos, frame_j.pos
@@ -205,11 +215,11 @@ def mast3r_asymmetric_inference(model, frame_i, frame_j):
     X, C, D, Q = torch.stack(X), torch.stack(C), torch.stack(D), torch.stack(Q)
     S, R, SH, O, M = torch.stack(S), torch.stack(R), torch.stack(SH), torch.stack(O), torch.stack(M)
     X, C, D, Q = downsample(X, C, D, Q)
-    return X, C, D, Q, S, R, SH, O, M, res11, res21
+    return X, C, D, Q, S, R, SH, O, M
 
 
 def mast3r_match_asymmetric(model, frame_i, frame_j, idx_i2j_init=None):
-    X, C, D, Q, S, R, SH, O, M, res11, res21 = mast3r_asymmetric_inference(model, frame_i, frame_j)
+    X, C, D, Q, S, R, SH, O, M = mast3r_asymmetric_inference(model, frame_i, frame_j)
 
     b, h, w = X.shape[:-1]
     # 2 outputs per inference
@@ -229,17 +239,30 @@ def mast3r_match_asymmetric(model, frame_i, frame_j, idx_i2j_init=None):
     Cii, Cji = einops.rearrange(C, "b h w -> b (h w) 1")
     Dii, Dji = einops.rearrange(D, "b h w c -> b (h w) c")
     Qii, Qji = einops.rearrange(Q, "b h w -> b (h w) 1")
-    print("frame color: ", einops.rearrange(frame_i.img[0,:, 10:20, 20], "c h -> h c"))
-    print("sh color:", SH[0, 10:20, 20, :, :])
+    # print("frame color: ", einops.rearrange(frame_i.img[0,:, 0:2, 0], "c h -> h c"))
+    # print("sh color:", SH[0, 0:2, 0, :, :])
+    frame_colors = einops.rearrange(frame_i.img[0,...], "c h w -> (h w) c")
+    sh_colors = einops.rearrange(SH[0, ...], "h w c d -> (h w) (c d)")
+
+    frame_colors_normalized = frame_colors / torch.linalg.norm(frame_colors, dim=1, keepdim=True)
+    sh_colors_normalized = sh_colors / torch.linalg.norm(sh_colors, dim=1, keepdim=True)
+    errors = torch.linalg.norm(frame_colors_normalized - sh_colors_normalized, dim=1)
+    print(errors.sum()/len(errors))
+
     Sii, Sji = einops.rearrange(S, "b h w c -> b (h w) c")
     Rii, Rji = einops.rearrange(R, "b h w c -> b (h w) c")
     SHii, SHji = einops.rearrange(SH, "b h w c d -> b (h w) c d")
     Oii, Oji = einops.rearrange(O, "b h w c -> b (h w) c")
     Mii, Mji = einops.rearrange(M, "b h w c -> b (h w) c")
 
- 
-
-    return idx_i2j, valid_match_j, Xii, Cii, Qii, Xji, Cji, Qji, Sii, Rii, SHii, Oii, Mii, Sji, Rji, SHji, Oji, Mji, res11, res21
+    # add frame colors to sh colors
+    new_sh1 = torch.zeros_like(SHii)
+    new_sh2 = torch.zeros_like(SHji)
+    new_sh1[..., 0] = sh_utils.RGB2SH(einops.rearrange(frame_i.img, 'b c h w -> b (h w) c'))
+    new_sh2[..., 0] = sh_utils.RGB2SH(einops.rearrange(frame_j.img, '(b c) h w -> b (h w) c', b=1))
+    SHii = SHii + new_sh1
+    SHji = SHji + new_sh2
+    return idx_i2j, valid_match_j, Xii, Cii, Qii, Xji, Cji, Qji, Sii, Rii, SHii, Oii, Mii, Sji, Rji, SHji, Oji, Mji
 
 
 def _resize_pil_image(img, long_edge_size):
