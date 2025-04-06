@@ -29,6 +29,11 @@ class Frame:
     N: int = 0
     N_updates: int = 0
     K: Optional[torch.Tensor] = None
+    SH: Optional[torch.Tensor] = None
+    opacities: Optional[torch.Tensor] = None
+    offsets: Optional[torch.Tensor] = None
+    rotations: Optional[torch.Tensor] = None
+    scales: Optional[torch.Tensor] = None
 
     def get_score(self, C):
         filtering_score = config["tracking"]["filtering_score"]
@@ -104,8 +109,18 @@ class Frame:
         self.N_updates += 1
         return
 
+    # @added
+    def update_gaussians(self, scale: torch.Tensor, rotation: torch.Tensor, SH: torch.Tensor, opacity: torch.Tensor, mean: torch.Tensor):
+        self.SH = SH
+        self.opacities = opacity
+        self.offsets = mean - self.X_canon # only store offsets
+        self.rotations = rotation
+        self.scales = scale
+        return
+
     def get_average_conf(self):
         return self.C / self.N if self.C is not None else None
+
 
 
 def create_frame(i, img, T_WC, img_size=512, device="cuda:0"):
@@ -151,6 +166,12 @@ class SharedStates:
         self.C = torch.zeros(h * w, 1, device=device, dtype=dtype).share_memory_()
         self.feat = torch.zeros(1, self.num_patches, self.feat_dim, device=device, dtype=dtype).share_memory_()
         self.pos = torch.zeros(1, self.num_patches, 2, device=device, dtype=torch.long).share_memory_()
+        # Gaussian parameters
+        self.SH = torch.zeros(h * w, 3, 1, device=device, dtype=dtype).share_memory_()
+        self.opacities = torch.zeros(h * w, 1, device=device, dtype=dtype).share_memory_()
+        self.offsets = torch.zeros(h * w, 3, device=device, dtype=dtype).share_memory_()
+        self.rotations = torch.zeros(h * w, 4, device=device, dtype=dtype).share_memory_()
+        self.scales = torch.zeros(h * w, 3, device=device, dtype=dtype).share_memory_()
         # fmt: on
 
     def set_frame(self, frame):
@@ -165,6 +186,12 @@ class SharedStates:
             self.C[:] = frame.C
             self.feat[:] = frame.feat
             self.pos[:] = frame.pos
+            if frame.SH is not None:
+                self.SH[:] = frame.SH
+                self.opacities[:] = frame.opacities
+                self.offsets[:] = frame.offsets
+                self.rotations[:] = frame.rotations
+                self.scales[:] = frame.scales
 
     def get_frame(self):
         with self.lock:
@@ -175,11 +202,22 @@ class SharedStates:
                 self.img_true_shape,
                 self.uimg,
                 lietorch.Sim3(self.T_WC),
+                self.SH,
+                self.opacities,
+                self.offsets,
+                self.rotations,
+                self.scales
             )
             frame.X_canon = self.X
             frame.C = self.C
             frame.feat = self.feat
             frame.pos = self.pos
+
+            frame.SH = self.SH
+            frame.opacities = self.opacities
+            frame.offsets = self.offsets
+            frame.rotations = self.rotations
+            frame.scales = self.scales
             return frame
 
     def queue_global_optimization(self, idx):
@@ -246,6 +284,11 @@ class SharedKeyframes:
         self.is_dirty = torch.zeros(buffer, 1, device=device, dtype=torch.bool).share_memory_()
         self.K = torch.zeros(3, 3, device=device, dtype=dtype).share_memory_()
         # fmt: on
+        self.SH = torch.zeros(buffer, h * w, 3, 1, device=device, dtype=dtype).share_memory_()
+        self.opacities = torch.zeros(buffer, h * w, 1, device=device, dtype=dtype).share_memory_()
+        self.offsets = torch.zeros(buffer, h * w, 3, device=device, dtype=dtype).share_memory_()
+        self.rotations = torch.zeros(buffer, h * w, 4, device=device, dtype=dtype).share_memory_()
+        self.scales = torch.zeros(buffer, h * w, 3, device=device, dtype=dtype).share_memory_()
 
     def __getitem__(self, idx) -> Frame:
         with self.lock:
@@ -257,6 +300,11 @@ class SharedKeyframes:
                 self.img_true_shape[idx],
                 self.uimg[idx],
                 lietorch.Sim3(self.T_WC[idx]),
+                self.SH[idx],
+                self.opacities[idx],
+                self.offsets[idx],
+                self.rotations[idx],
+                self.scales[idx]
             )
             kf.X_canon = self.X[idx]
             kf.C = self.C[idx]
@@ -266,6 +314,14 @@ class SharedKeyframes:
             kf.N_updates = int(self.N_updates[idx])
             if config["use_calib"]:
                 kf.K = self.K
+            if self.SH[idx] is not None:
+                kf.SH = self.SH[idx]
+                kf.opacities = self.opacities[idx]
+                kf.offsets = self.offsets[idx]
+                kf.rotations = self.rotations[idx]
+                kf.scales = self.scales[idx]
+            else:
+                print("get SH is None")
             return kf
 
     def __setitem__(self, idx, value: Frame) -> None:
@@ -286,6 +342,21 @@ class SharedKeyframes:
             self.N[idx] = value.N
             self.N_updates[idx] = value.N_updates
             self.is_dirty[idx] = True
+            if value.SH is not None:
+                # print(f"setting SH of frame: {value.frame_id} with {value.SH.shape if value.SH is not None else str(None)}")
+                # sum_non_none_SH = 0
+                # for i in range(self.n_size.value):
+                #     if self.SH[i] is not None:
+                #         print(i)
+                #         sum_non_none_SH += 1
+                # print(f"non None SH: {sum_non_none_SH}")
+                self.SH[idx] = value.SH
+                self.opacities[idx] = value.opacities
+                self.offsets[idx] = value.offsets
+                self.rotations[idx] = value.rotations
+                self.scales[idx] = value.scales
+            else:
+                print("set SH is None")
             return idx
 
     def __len__(self):

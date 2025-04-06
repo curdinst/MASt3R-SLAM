@@ -239,15 +239,6 @@ def mast3r_match_asymmetric(model, frame_i, frame_j, idx_i2j_init=None):
     Cii, Cji = einops.rearrange(C, "b h w -> b (h w) 1")
     Dii, Dji = einops.rearrange(D, "b h w c -> b (h w) c")
     Qii, Qji = einops.rearrange(Q, "b h w -> b (h w) 1")
-    # print("frame color: ", einops.rearrange(frame_i.img[0,:, 0:2, 0], "c h -> h c"))
-    # print("sh color:", SH[0, 0:2, 0, :, :])
-    frame_colors = einops.rearrange(frame_i.img[0,...], "c h w -> (h w) c")
-    sh_colors = einops.rearrange(SH[0, ...], "h w c d -> (h w) (c d)")
-
-    frame_colors_normalized = frame_colors / torch.linalg.norm(frame_colors, dim=1, keepdim=True)
-    sh_colors_normalized = sh_colors / torch.linalg.norm(sh_colors, dim=1, keepdim=True)
-    errors = torch.linalg.norm(frame_colors_normalized - sh_colors_normalized, dim=1)
-    print(errors.sum()/len(errors))
 
     Sii, Sji = einops.rearrange(S, "b h w c -> b (h w) c")
     Rii, Rji = einops.rearrange(R, "b h w c -> b (h w) c")
@@ -262,7 +253,9 @@ def mast3r_match_asymmetric(model, frame_i, frame_j, idx_i2j_init=None):
     new_sh2[..., 0] = sh_utils.RGB2SH(einops.rearrange(frame_j.img, '(b c) h w -> b (h w) c', b=1))
     SHii = SHii + new_sh1
     SHji = SHji + new_sh2
-    return idx_i2j, valid_match_j, Xii, Cii, Qii, Xji, Cji, Qji, Sii, Rii, SHii, Oii, Mii, Sji, Rji, SHji, Oji, Mji
+
+    gaussian_params = (Sii, Rii, SHii, Oii, Mii, Sji, Rji, SHji, Oji, Mji)
+    return idx_i2j, valid_match_j, Xii, Cii, Qii, Xji, Cji, Qji, gaussian_params
 
 
 def _resize_pil_image(img, long_edge_size):

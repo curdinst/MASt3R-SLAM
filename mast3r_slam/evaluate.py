@@ -8,7 +8,7 @@ from mast3r_slam.dataloader import Intrinsics
 from mast3r_slam.frame import SharedKeyframes
 from mast3r_slam.lietorch_utils import as_SE3
 from mast3r_slam.config import config
-from mast3r_slam.geometry import constrain_points_to_ray
+from mast3r_slam.geometry import constrain_points_to_ray, quat_mult
 from plyfile import PlyData, PlyElement
 from scipy.spatial.transform import Rotation
 import mast3r_slam.utils.geometry as geometry
@@ -72,6 +72,58 @@ def save_reconstruction(savedir, filename, keyframes, c_conf_threshold):
     colors = np.concatenate(colors, axis=0)
 
     save_ply(savedir / filename, pointclouds, colors)
+
+def save_gaussian_map(savedir, filename, keyframes, c_conf_threshold):
+    savedir = pathlib.Path(savedir)
+    savedir.mkdir(exist_ok=True, parents=True)
+    scales, rotations, means, sh, opacities = [], [], [], [], []
+    num_gaussians = 0
+    for i in range(len(keyframes)):
+        keyframe = keyframes[i]
+        if keyframe.SH is None:
+            print(f"Keyframe {keyframe.frame_id} has no SH, skipping.")
+            continue
+        # print(f"Keyframe {keyframe.frame_id} has SH, saving.")
+        sh_resized = einops.rearrange(keyframe.SH, "hw c d -> hw (c d)")
+        sh_new = sh_resized.cpu().numpy()
+        scales_new = (keyframe.T_WC.data[0,-1] * keyframe.scales).cpu().numpy()
+        opacities_new = keyframe.opacities.cpu().numpy()
+        # w_rotations = keyframe.T_WC.act(keyframe.rotations).cpu().numpy()
+        w_rotations = quat_mult(keyframe.T_WC.data, keyframe.rotations).cpu().numpy()
+        rotations_new = w_rotations
+        w_means = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets).cpu().numpy()
+        means_new = w_means
+        valid = (
+            keyframe.get_average_conf().cpu().numpy().astype(np.float32).reshape(-1)
+            > c_conf_threshold
+        )
+        rotations.append(rotations_new[valid])
+        scales.append(scales_new[valid])
+        means.append(means_new[valid])
+        sh.append(sh_new[valid])
+        opacities.append(opacities_new[valid])
+        print(f"Valid points: {valid.sum()/len(valid)}")
+        num_gaussians += rotations_new[valid].shape[0]
+        print(f"num gaussians: {rotations_new[valid].shape[0]}")
+        
+    if len(sh) < 2:
+        print("Not enough keyframes with SH, skipping saving.")
+        return
+    print(f"length gaussian array: {len(sh)}")
+    print(f"Total number of Gaussians: {num_gaussians}")
+    scales = np.concatenate(scales, axis=0)
+    rotations = np.concatenate(rotations, axis=0)
+    means = np.concatenate(means, axis=0)
+    sh = np.concatenate(sh, axis=0)
+    opacities = np.concatenate(opacities, axis=0)
+    save_gaussian_new_ply(
+        savedir / filename,
+        scales,
+        rotations,
+        means,
+        sh,
+        opacities
+    )
 
 
 def save_keyframes(savedir, timestamps, keyframes: SharedKeyframes):
@@ -233,10 +285,16 @@ def save_gaussian_new_ply(save_path, S, R, M, SH, O):
     # print("SH.shape", SH.shape)
     # print("O.shape", O.shape)
 
-    means = M.detach().cpu().numpy()
-    # covariances = C
-    harmonics = SH[..., 0].detach().cpu().numpy()
-    opacities = O.detach().cpu().numpy()
+    # means = M.detach().cpu().numpy()
+    # # covariances = C
+    # harmonics = SH[..., 0].detach().cpu().numpy()
+    # opacities = O.detach().cpu().numpy()
+
+    means = M
+    harmonics = SH
+    opacities = O
+    rotations = R
+    scales = S
 
     # Rearrange the tensors to the correct shape
     # means = einops.rearrange(means[0], "view h w xyz -> (view h w) xyz").detach().cpu().numpy()
@@ -247,8 +305,8 @@ def save_gaussian_new_ply(save_path, S, R, M, SH, O):
 
     # Convert the covariance matrices to quaternions and scales
     # rotations, scales = covariance_to_quaternion_and_scale(covariances)
-    rotations = R.detach().cpu().numpy()
-    scales = S.detach().cpu().numpy()
+    # rotations = R.detach().cpu().numpy()
+    # scales = S.detach().cpu().numpy()
     # Construct the attributes
     rest = np.zeros_like(means)
     

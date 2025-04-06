@@ -185,7 +185,7 @@ if __name__ == "__main__":
             intrinsics["calibration"],
         )
 
-    keyframes = SharedKeyframes(manager, h, w)
+    keyframes = SharedKeyframes(manager, h, w, buffer=128)
     states = SharedStates(manager, h, w)
 
     if not args.no_viz:
@@ -194,26 +194,6 @@ if __name__ == "__main__":
             args=(config, states, keyframes, main2viz, viz2main),
         )
         viz.start()
-
-    # encoder = mast3r_model.AsymmetricMASt3R(
-    #             pos_embed='RoPE100',
-    #             patch_embed_cls='ManyAR_PatchEmbed',
-    #             img_size=(512, 512),
-    #             head_type='gaussian_head',
-    #             output_mode='pts3d+gaussian+desc24',
-    #             depth_mode=('exp', -mast3r_model.inf, mast3r_model.inf),
-    #             conf_mode=('exp', 1, mast3r_model.inf),
-    #             enc_embed_dim=1024,
-    #             enc_depth=24,
-    #             enc_num_heads=16,
-    #             dec_embed_dim=768,
-    #             dec_depth=12,
-    #             dec_num_heads=12,
-    #             two_confs=True,
-    #             use_offsets=True,
-    #             sh_degree=config.sh_degree if hasattr(config, 'sh_degree') else 1
-    #         )   
-    # print("encoder", encoder)
 
     model = load_mast3r(device=device, path="checkpoints/MASt3R_gaussians_v1.pth")
     # model = load_mast3r(device=device)
@@ -321,7 +301,12 @@ if __name__ == "__main__":
 
         if add_new_kf:
             keyframes.append(frame)
+            # print("add new keyframe", frame.frame_id)
+            # print("new keyframe has sh: ", frame.SH is not None)
+            # print("last keyframe id", len(keyframes) - 1)
+            # print("last keyframe has sh: ", keyframes.last_keyframe().SH is not None)
             states.queue_global_optimization(len(keyframes) - 1)
+            
             # In single threaded mode, wait for the backend to finish
             while config["single_thread"]:
                 with states.lock:
@@ -333,19 +318,38 @@ if __name__ == "__main__":
             FPS = i / (time.time() - fps_timer)
             print(f"FPS: {FPS}")
         i += 1
+        if i == 240: break
+
+    date = datetime_now.split(":")[0]
+    min = datetime_now.split(":")[1]
+    sec = datetime_now.split(":")[-1].split(".")[0]
+    datetime_now_new = "_" + date + "-" + min + "-" + sec
 
     if dataset.save_results:
         save_dir, seq_name = eval.prepare_savedir(args, dataset)
         eval.save_traj(save_dir, f"{seq_name}.txt", dataset.timestamps, keyframes)
         eval.save_reconstruction(
             save_dir,
-            f"{seq_name}.ply",
+            f"{seq_name + datetime_now_new}.ply",
             keyframes,
             last_msg.C_conf_threshold,
         )
         eval.save_keyframes(
             save_dir / "keyframes" / seq_name, dataset.timestamps, keyframes
         )
+    save_gaussian_map = True
+    if save_gaussian_map:
+        save_dir, seq_name = eval.prepare_savedir(args, dataset)
+        savedir = pathlib.Path(f"logs/")
+        file_name = seq_name + datetime_now_new + "gaussmap.ply"
+        savedir.mkdir(exist_ok=True, parents=True)
+        eval.save_gaussian_map(
+            savedir=savedir,
+            filename=file_name,
+            keyframes=keyframes,
+            c_conf_threshold=last_msg.C_conf_threshold,
+        )
+
     if save_frames:
         savedir = pathlib.Path(f"logs/frames/{datetime_now}")
         savedir.mkdir(exist_ok=True, parents=True)

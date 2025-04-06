@@ -51,6 +51,16 @@ def act_Sim3(X: lietorch.Sim3, pC: torch.Tensor, jacobian=False):
     dpc_ds = pW.reshape(*pW.shape[:-1], -1, 1)
     return pW, torch.cat([dpC_dt, dpC_dR, dpc_ds], dim=-1)  # view(-1, mdim)
 
+def quat_mult(quat_a: torch.Tensor, quaternions: torch.Tensor):
+    x1, y1, z1, w1 = quat_a[0, 3:7].unbind(dim=-1)
+    x2, y2, z2, w2 = quaternions[:,0], quaternions[:,1], quaternions[:,2], quaternions[:,3]
+
+    w = w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2
+    x = w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2
+    y = w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2
+    z = w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2
+
+    return torch.stack((x, y, z, w), dim=-1)
 
 def decompose_K(K):
     fx = K[..., 0, 0]

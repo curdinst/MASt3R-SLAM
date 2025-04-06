@@ -1,11 +1,13 @@
 import torch
 from mast3r_slam.frame import Frame
+# from mast3r_slam.frame import update_gaussians
 from mast3r_slam.geometry import (
     act_Sim3,
     point_to_ray_dist,
     get_pixel_coords,
     constrain_points_to_ray,
     project_calib,
+    quat_mult,
 )
 from mast3r_slam.nonlinear_optimizer import check_convergence, huber
 from mast3r_slam.config import config
@@ -31,19 +33,20 @@ class FrameTracker:
         keyframe = self.keyframes.last_keyframe()
         # print("frame: ", frame.img.shape)
         # print("some colors", frame.img[0, :, 10:20, 20])
-        idx_f2k, valid_match_k, Xff, Cff, Qff, Xkf, Ckf, Qkf, Sii, Rii, SHii, Oii, Mii, Sji, Rji, SHji, Oji, Mji = mast3r_match_asymmetric(
+        idx_f2k, valid_match_k, Xff, Cff, Qff, Xkf, Ckf, Qkf, gaussian_params = mast3r_match_asymmetric(
             self.model, frame, keyframe, idx_i2j_init=self.idx_f2k
         )
 
-        filename = "logs/gaussian_encode_seperatly.ply"
-        # save_as_ply(res11, res21, filename)
-        save_gaussian_new_ply(save_path=filename,
-                          S=torch.cat((Sii, Sji)),
-                          R=torch.cat((Rii,Rji)),
-                          M=torch.cat((Mii,Mji)),
-                          SH=torch.cat((SHii, SHji)),
-                          O=torch.cat((Oii, Oji)))
-        # print("ran mast3r Xff.shape", Xff.shape)
+        save_gaussians_ply = False
+        if save_gaussians_ply:
+            (Sff, Rff, SHff, Off, Mff, Skf, Rkf, SHkf, Okf, Mkf) = gaussian_params
+            filename = "logs/gaussian_encode_seperatly.ply"
+            save_gaussian_new_ply(save_path=filename,
+                            S=torch.cat((Sff, Skf)),
+                            R=torch.cat((Rff,Rkf)),
+                            M=torch.cat((Mff,Mkf)),
+                            SH=torch.cat((SHff, SHkf)),
+                            O=torch.cat((Off, Okf)))
         # Save idx for next
         self.idx_f2k = idx_f2k.clone()
 
@@ -55,6 +58,10 @@ class FrameTracker:
 
         # Update keyframe pointmap after registration (need pose)
         frame.update_pointmap(Xff, Cff)
+
+        (Sff, Rff, SHff, Off, Mff, Skf, Rkf, SHkf, Okf, Mkf) = gaussian_params
+        print(f"update gaussians of frame {frame.frame_id}")
+        frame.update_gaussians(Sff, Rff, SHff, Off, Mff)
 
         use_calib = config["use_calib"]
         img_size = frame.img.shape[-2:]
@@ -106,10 +113,31 @@ class FrameTracker:
             return False, [], True
 
         frame.T_WC = T_WCf
-
+        # print("T_WCf", T_WCf.data)
         # Use pose to transform points to update keyframe
         Xkk = T_CkCf.act(Xkf)
         keyframe.update_pointmap(Xkk, Ckf)
+
+        (Sff, Rff, SHff, Off, Mff, Skf, Rkf, SHkf, Okf, Mkf) = gaussian_params
+        Mkk = T_CkCf.act(Mkf)
+        # print("Rotation", Rkf[0,:])
+        # Rkk = T_CkCf.mul(Rkf)
+        # print("Rkf", Rkf[0, :], Rkf.shape)
+        # print("T_CkCf.data", T_CkCf.data)
+        Rkk = quat_mult(T_CkCf.data, Rkf)
+        scale_CkCf = T_CkCf.data[0,-1]
+        Skk = scale_CkCf * Skf
+        # print(Rkk.shape)
+        # print("Rkk", Rkk[0, :], Rkk.shape)
+        # print("T_CkCf", T_CkCf.data)
+        # print("Rkf", Rkf[0,:])
+        # print("Rkk", Rkk[0,:].data)
+
+        # Rkk = T_CkCf.act(Rkf)
+        print(f"update gaussians of frame {keyframe.frame_id}")
+        keyframe.update_gaussians(Skk, Rkk, SHkf, Okf, Mkk)
+        # print("added gaussian to keyframe", frame.frame_id)
+        # print(keyframe.SH is None)
         # write back the fitered pointmap
         self.keyframes[len(self.keyframes) - 1] = keyframe
 
