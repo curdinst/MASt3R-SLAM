@@ -34,6 +34,8 @@ class Frame:
     offsets: Optional[torch.Tensor] = None
     rotations: Optional[torch.Tensor] = None
     scales: Optional[torch.Tensor] = None
+    N_guass: int = 0
+    N_gauss_updates: int = 0
 
     def get_score(self, C):
         filtering_score = config["tracking"]["filtering_score"]
@@ -43,7 +45,7 @@ class Frame:
             score = torch.mean(C)
         return score
 
-    def update_pointmap(self, X: torch.Tensor, C: torch.Tensor):
+    def update_pointmap(self, X: torch.Tensor, C: torch.Tensor, scale: torch.Tensor=None, rotation: torch.Tensor=None, SH: torch.Tensor=None, opacity: torch.Tensor=None, mean: torch.Tensor=None):
         filtering_mode = config["tracking"]["filtering_mode"]
 
         if self.N == 0:
@@ -53,6 +55,13 @@ class Frame:
             self.N_updates = 1
             if filtering_mode == "best_score":
                 self.score = self.get_score(C)
+            # Gaussian params
+            if scale is not None:
+                self.SH = SH.clone()
+                self.opacities = opacity.clone()
+                self.offsets = mean.clone() - self.X_canon # only store offsets
+                self.rotations = rotation.clone()
+                self.scales = scale.clone()
             return
 
         if filtering_mode == "first":
@@ -80,6 +89,21 @@ class Frame:
             self.X_canon = ((self.C * self.X_canon) + (C * X)) / (self.C + C)
             self.C = self.C + C
             self.N += 1
+            # Gaussian params
+            if scale is not None and self.scales is not None:
+                # self.SH = ((self.C.unsqueeze(1) * self.SH) + (C.unsqueeze(1) * SH)) / self.C.unsqueeze(1)
+                self.SH = SH.clone()
+                # print(f"C shape: {C.shape}, SH shape: {SH.shape}")
+                self.opacities = ((self.C * self.opacities) + (C * opacity)) / self.C
+                self.offsets = ((self.C * self.offsets) + (C * (mean - X))) / self.C
+                self.rotations = ((self.C * self.rotations) + (C * rotation)) / self.C
+                self.scales = ((self.C * self.scales) + (C * scale)) / self.C
+            elif scale is not None:
+                self.SH = SH.clone()
+                self.opacities = opacity.clone()
+                self.offsets = mean.clone() - self.X_canon # only store offsets
+                self.rotations = rotation.clone()
+                self.scales = scale.clone()
         elif filtering_mode == "weighted_spherical":
 
             def cartesian_to_spherical(P):
@@ -110,12 +134,32 @@ class Frame:
         return
 
     # @added
-    def update_gaussians(self, scale: torch.Tensor, rotation: torch.Tensor, SH: torch.Tensor, opacity: torch.Tensor, mean: torch.Tensor):
-        self.SH = SH
-        self.opacities = opacity
-        self.offsets = mean - self.X_canon # only store offsets
-        self.rotations = rotation
-        self.scales = scale
+    def update_gaussians(self, scale: torch.Tensor, rotation: torch.Tensor, SH: torch.Tensor, opacity: torch.Tensor, mean: torch.Tensor, X: torch.Tensor, C: torch.Tensor):
+        filtering_mode = "weighted_pointmap"  # config["tracking"]["filtering_mode"]
+        if self.N_guass == 0:
+            self.SH = SH.clone()
+            self.opacities = opacity.clone()
+            self.offsets = mean.clone() - self.X_canon # only store offsets
+            self.rotations = rotation.clone()
+            self.scales = scale.clone()
+            self.N_guass = 1
+            self.N_gauss_updates = 1
+            return
+
+        if filtering_mode == "recent":
+            self.SH = SH.clone()
+            self.opacities = opacity.clone()
+            self.offsets = mean.clone() - self.X_canon # only store offsets
+            self.rotations = rotation.clone()
+            self.scales = scale.clone()
+        elif filtering_mode == "weighted_pointmap":
+            self.SH = ((self.C * self.SH) + (C * SH)) / self.C
+            self.opacities = ((self.C * self.opacities) + (C * opacity)) / self.C
+            self.offsets = ((self.C * self.offsets) + (C * (mean - X))) / self.C
+            self.rotations = ((self.C * self.rotations) + (C * rotation)) / self.C
+            self.scales = ((self.C * self.scales) + (C * scale)) / self.C
+            self.N_gauss += 1
+        self.N_gauss_updates += 1
         return
 
     def get_average_conf(self):

@@ -30,7 +30,7 @@ class FrameTracker:
 
     def track(self, frame: Frame):
         # print("track")
-        keyframe = self.keyframes.last_keyframe()
+        keyframe: Frame = self.keyframes.last_keyframe()
         # print("frame: ", frame.img.shape)
         # print("some colors", frame.img[0, :, 10:20, 20])
         idx_f2k, valid_match_k, Xff, Cff, Qff, Xkf, Ckf, Qkf, gaussian_params = mast3r_match_asymmetric(
@@ -55,13 +55,13 @@ class FrameTracker:
         valid_match_k = valid_match_k[0]
 
         Qk = torch.sqrt(Qff[idx_f2k] * Qkf)
+        (Sff, Rff, SHff, Off, Mff, Skf, Rkf, SHkf, Okf, Mkf) = gaussian_params
 
         # Update keyframe pointmap after registration (need pose)
-        frame.update_pointmap(Xff, Cff)
+        frame.update_pointmap(Xff, Cff, Sff, Rff, SHff, Off, Mff)
 
-        (Sff, Rff, SHff, Off, Mff, Skf, Rkf, SHkf, Okf, Mkf) = gaussian_params
-        print(f"update gaussians of frame {frame.frame_id}")
-        frame.update_gaussians(Sff, Rff, SHff, Off, Mff)
+        # print(f"update gaussians of frame {frame.frame_id}")
+        # frame.update_gaussians(Sff, Rff, SHff, Off, Mff)
 
         use_calib = config["use_calib"]
         img_size = frame.img.shape[-2:]
@@ -116,26 +116,19 @@ class FrameTracker:
         # print("T_WCf", T_WCf.data)
         # Use pose to transform points to update keyframe
         Xkk = T_CkCf.act(Xkf)
-        keyframe.update_pointmap(Xkk, Ckf)
-
+        # Gaussian parameters
         (Sff, Rff, SHff, Off, Mff, Skf, Rkf, SHkf, Okf, Mkf) = gaussian_params
         Mkk = T_CkCf.act(Mkf)
-        # print("Rotation", Rkf[0,:])
-        # Rkk = T_CkCf.mul(Rkf)
-        # print("Rkf", Rkf[0, :], Rkf.shape)
-        # print("T_CkCf.data", T_CkCf.data)
         Rkk = quat_mult(T_CkCf.data, Rkf)
         scale_CkCf = T_CkCf.data[0,-1]
         Skk = scale_CkCf * Skf
-        # print(Rkk.shape)
-        # print("Rkk", Rkk[0, :], Rkk.shape)
-        # print("T_CkCf", T_CkCf.data)
-        # print("Rkf", Rkf[0,:])
-        # print("Rkk", Rkk[0,:].data)
+        keyframe.update_pointmap(Xkk, Ckf, Skk, Rkk, SHkf, Okf, Mkk)
+
+
 
         # Rkk = T_CkCf.act(Rkf)
-        print(f"update gaussians of frame {keyframe.frame_id}")
-        keyframe.update_gaussians(Skk, Rkk, SHkf, Okf, Mkk)
+        # print(f"update gaussians of frame {keyframe.frame_id}")
+        # keyframe.update_gaussians()
         # print("added gaussian to keyframe", frame.frame_id)
         # print(keyframe.SH is None)
         # write back the fitered pointmap
