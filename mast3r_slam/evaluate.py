@@ -78,11 +78,13 @@ def save_gaussian_map(savedir, filename, keyframes, c_conf_threshold):
     savedir.mkdir(exist_ok=True, parents=True)
     scales, rotations, means, sh, opacities = [], [], [], [], []
     num_gaussians = 0
+    keyframe_ids = []
     for i in range(len(keyframes)):
         keyframe = keyframes[i]
         if keyframe.SH is None:
             print(f"Keyframe {keyframe.frame_id} has no SH, skipping.")
             continue
+        keyframe_ids.append(keyframe.frame_id)
         # print(f"Keyframe {keyframe.frame_id} has SH, saving.")
         sh_resized = einops.rearrange(keyframe.SH, "hw c d -> hw (c d)")
         sh_new = sh_resized.cpu().numpy()
@@ -105,6 +107,7 @@ def save_gaussian_map(savedir, filename, keyframes, c_conf_threshold):
         print(f"Valid points: {valid.sum()/len(valid)}")
         num_gaussians += rotations_new[valid].shape[0]
         print(f"num gaussians: {rotations_new[valid].shape[0]}")
+        print(f"keyframes: {keyframe_ids}")
         
     if len(sh) < 2:
         print("Not enough keyframes with SH, skipping saving.")

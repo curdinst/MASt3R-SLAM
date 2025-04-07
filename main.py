@@ -318,7 +318,9 @@ if __name__ == "__main__":
             FPS = i / (time.time() - fps_timer)
             print(f"FPS: {FPS}")
         i += 1
-        if i == 240: break
+        if i == 240: 
+            print(f"Last timestamp: {timestamp}")
+            break
 
     date = datetime_now.split(":")[0]
     min = datetime_now.split(":")[1]
