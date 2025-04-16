@@ -22,6 +22,7 @@ class FrameTracker:
         self.keyframes = frames
         self.device = device
 
+        self.poses = {}
         self.reset_idx_f2k()
 
     # Initialize with identity indexing of size (1,n)
@@ -115,13 +116,19 @@ class FrameTracker:
         frame.T_WC = T_WCf
         # print("T_WCf", T_WCf.data)
         # Use pose to transform points to update keyframe
+        # print(f"Xkf.mean {Xkf.mean()}")
         Xkk = T_CkCf.act(Xkf)
+        # print(f"Xkf.mean after scaling {Xkk.mean()}")
+
         # Gaussian parameters
         (Sff, Rff, SHff, Off, Mff, Skf, Rkf, SHkf, Okf, Mkf) = gaussian_params
         Mkk = T_CkCf.act(Mkf)
         Rkk = quat_mult(T_CkCf.data, Rkf)
+        # Rkk = Rkf
         scale_CkCf = T_CkCf.data[0,-1]
+        # print(f"scale_CkCf {scale_CkCf}")
         Skk = scale_CkCf * Skf
+        # Skk = Skf
         keyframe.update_pointmap(Xkk, Ckf, Skk, Rkk, SHkf, Okf, Mkk)
 
 
@@ -147,7 +154,10 @@ class FrameTracker:
         if new_kf:
             self.reset_idx_f2k()
         # print("Tracking end, new_kf", new_kf)
-
+        # print(f"frame_id {frame.frame_id}, T_WCf {frame.T_WC.data}")
+        # Store the frame.T_CW in a txt file
+        self.poses[frame.frame_id] = frame.T_WC.data.cpu().numpy()
+        
         return (
             new_kf,
             [

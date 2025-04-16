@@ -172,6 +172,7 @@ if __name__ == "__main__":
     dataset = load_dataset(args.dataset)
     dataset.subsample(config["dataset"]["subsample"])
     h, w = dataset.get_img_shape()[0]
+    print("img shape", h, w)
     print("len dataset", len(dataset.rgb_files))
     if args.calib:
         with open(args.calib, "r") as f:
@@ -318,7 +319,7 @@ if __name__ == "__main__":
             FPS = i / (time.time() - fps_timer)
             print(f"FPS: {FPS}")
         i += 1
-        if i == 240: 
+        if i == 24:
             print(f"Last timestamp: {timestamp}")
             break
 
@@ -329,21 +330,31 @@ if __name__ == "__main__":
 
     if dataset.save_results:
         save_dir, seq_name = eval.prepare_savedir(args, dataset)
+        seq_name = f"{seq_name + datetime_now_new}"
         eval.save_traj(save_dir, f"{seq_name}.txt", dataset.timestamps, keyframes)
         eval.save_reconstruction(
             save_dir,
-            f"{seq_name + datetime_now_new}.ply",
+            f"{seq_name}.ply",
             keyframes,
             last_msg.C_conf_threshold,
         )
         eval.save_keyframes(
             save_dir / "keyframes" / seq_name, dataset.timestamps, keyframes
         )
+
+    save_frame_poses = True
+    if save_frame_poses:
+        eval.save_frame_poses(
+            save_dir,
+            f"{seq_name}_all_poses.txt",
+            dataset.timestamps,
+            tracker.poses,
+        )
     save_gaussian_map = True
     if save_gaussian_map:
         save_dir, seq_name = eval.prepare_savedir(args, dataset)
         savedir = pathlib.Path(f"logs/")
-        file_name = seq_name + datetime_now_new + "gaussmap.ply"
+        file_name = seq_name + datetime_now_new + "_wa.ply"
         savedir.mkdir(exist_ok=True, parents=True)
         eval.save_gaussian_map(
             savedir=savedir,

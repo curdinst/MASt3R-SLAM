@@ -89,7 +89,9 @@ class Frame:
             self.X_canon = ((self.C * self.X_canon) + (C * X)) / (self.C + C)
             
             # Gaussian params
-            if scale is not None and self.scales is not None:
+            gaussian_filtering_mode = ["weigtend_average", "recent", "first"][0]
+
+            if gaussian_filtering_mode == "weigtend_average" and scale is not None and self.scales is not None:
                 # self.SH = ((self.C.unsqueeze(1) * self.SH) + (C.unsqueeze(1) * SH)) / self.C.unsqueeze(1)
                 self.SH = SH.clone()
                 # print(f"C shape: {C.shape}, SH shape: {SH.shape}")
@@ -97,7 +99,14 @@ class Frame:
                 self.offsets = ((self.C * self.offsets) + (C * (mean - X))) / (self.C  + C)
                 self.rotations = ((self.C * self.rotations) + (C * rotation)) / (self.C  + C)
                 self.scales = ((self.C * self.scales) + (C * scale)) / (self.C  + C)
-            elif scale is not None:
+            elif gaussian_filtering_mode == "recent" and scale is not None:
+                self.SH = SH.clone()
+                self.opacities = opacity.clone()
+                self.offsets = mean.clone() - self.X_canon # only store offsets
+                self.rotations = rotation.clone()
+                self.scales = scale.clone()
+            elif gaussian_filtering_mode == "first" and scale is not None and self.N_updates == 1:
+                print("Save First Gaussian params")
                 self.SH = SH.clone()
                 self.opacities = opacity.clone()
                 self.offsets = mean.clone() - self.X_canon # only store offsets

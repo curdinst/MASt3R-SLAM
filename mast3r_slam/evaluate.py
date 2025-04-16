@@ -43,9 +43,26 @@ def save_traj(
             if intrinsics is None:
                 T_WC = as_SE3(keyframe.T_WC)
             else:
+                print("Refining pose with calibration")
                 T_WC = intrinsics.refine_pose_with_calibration(keyframe)
             x, y, z, qx, qy, qz, qw = T_WC.data.numpy().reshape(-1)
-            f.write(f"{t} {x} {y} {z} {qx} {qy} {qz} {qw}\n")
+            f.write(f"{keyframe.frame_id} {t} {x} {y} {z} {qx} {qy} {qz} {qw}\n")
+
+def save_frame_poses(
+            save_dir,
+            filename,
+            timestamps,
+            frame_poses
+            ):
+    save_dir = pathlib.Path(save_dir)
+    save_dir.mkdir(exist_ok=True, parents=True)
+    filepath = save_dir / filename
+    with open(filepath, "w") as f:
+        for key in frame_poses.keys():
+            stamp = timestamps[key]
+            pose = frame_poses[key]
+            x, y, z, qx, qy, qz, qw, s = pose.reshape(-1)
+            f.write(f"{key} {stamp} {x} {y} {z} {qx} {qy} {qz} {qw} {s}\n")
 
 
 def save_reconstruction(savedir, filename, keyframes, c_conf_threshold):
@@ -76,6 +93,8 @@ def save_reconstruction(savedir, filename, keyframes, c_conf_threshold):
 def save_gaussian_map(savedir, filename, keyframes, c_conf_threshold):
     savedir = pathlib.Path(savedir)
     savedir.mkdir(exist_ok=True, parents=True)
+    masks_dir = savedir / f"masks_{filename[:-4]}"
+    masks_dir.mkdir(exist_ok=True, parents=True)
     scales, rotations, means, sh, opacities = [], [], [], [], []
     num_gaussians = 0
     keyframe_ids = []
@@ -90,15 +109,18 @@ def save_gaussian_map(savedir, filename, keyframes, c_conf_threshold):
         sh_new = sh_resized.cpu().numpy()
         scales_new = (keyframe.T_WC.data[0,-1] * keyframe.scales).cpu().numpy()
         opacities_new = keyframe.opacities.cpu().numpy()
-        # w_rotations = keyframe.T_WC.act(keyframe.rotations).cpu().numpy()
         w_rotations = quat_mult(keyframe.T_WC.data, keyframe.rotations).cpu().numpy()
+        # w_rotations = keyframe.rotations.cpu().numpy()
         rotations_new = w_rotations
         w_means = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets).cpu().numpy()
         means_new = w_means
+        print(f"shape of kf conf: {keyframe.get_average_conf().cpu().numpy().astype(np.float32).shape}")
         valid = (
             keyframe.get_average_conf().cpu().numpy().astype(np.float32).reshape(-1)
             > c_conf_threshold
         )
+        valid_tensor = torch.tensor(valid, dtype=torch.bool)
+        torch.save(valid_tensor, masks_dir / f"{keyframe.frame_id}.pt")
         rotations.append(rotations_new[valid])
         scales.append(scales_new[valid])
         means.append(means_new[valid])
@@ -108,6 +130,13 @@ def save_gaussian_map(savedir, filename, keyframes, c_conf_threshold):
         num_gaussians += rotations_new[valid].shape[0]
         print(f"num gaussians: {rotations_new[valid].shape[0]}")
         print(f"keyframes: {keyframe_ids}")
+        # rotations.append(rotations_new)
+        # scales.append(scales_new)
+        # means.append(means_new)
+        # sh.append(sh_new)
+        # opacities.append(opacities_new)
+        num_gaussians += rotations_new.shape[0]
+
         
     if len(sh) < 2:
         print("Not enough keyframes with SH, skipping saving.")
