@@ -3,6 +3,7 @@ import time
 
 import torch
 import torch.multiprocessing as mp
+import einops
 from tqdm import tqdm
 from scipy.spatial.transform import Rotation as R
 
@@ -18,8 +19,9 @@ from gaussian_splatting.utils.graphics_utils import getProjectionMatrix2, getWor
 from gaussian_splatting.scene.gaussian_model import GaussianModel
 from gaussian_splatting.utils.camera_utils import Camera 
 from mast3r_slam.frame import Mode, SharedKeyframes, SharedStates, create_frame
+from mast3r_slam.geometry import constrain_points_to_ray, quat_mult
 from gaussian_splatting.utils.graphics_utils import focal2fov
-
+from matplotlib import pyplot as plt
 
 from munch import munchify
 
@@ -84,7 +86,7 @@ class GaussianOptimizer:
 
             keyframe = keyframes[idx]
             print(f"viewpoint_stack.keys() {self.viewpoint_stack.keys()}")
-            # if idx in self.viewpoint_stack.keys(): continue
+            if idx in self.viewpoint_stack.keys(): continue
             # gt_color, gt_depth, gt_pose = dataset[keyframe.frame_id]
             viewpoint = Camera(
                 keyframe.frame_id,
@@ -115,12 +117,18 @@ class GaussianOptimizer:
             self.viewpoint_stack[idx] = viewpoint
             # if i == len(keyframes):
             print("add points to gaussians")
+
+            scales_new = (keyframe.T_WC.data[0,-1] * keyframe.scales)
+            opacities_new = keyframe.opacities
+            w_rotations = quat_mult(keyframe.T_WC.data, keyframe.rotations)
+            w_means = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets)
+
             self.gaussians.add_points(
-                new_xyz=keyframe.X_canon + keyframe.offsets,
+                new_xyz=w_means,
                 new_features_dc=keyframe.SH,
-                new_opacities=keyframe.opacities,
-                new_scales=keyframe.scales,
-                new_rotations=keyframe.rotations
+                new_opacities=opacities_new,
+                new_scales=scales_new,
+                new_rotations=w_rotations
             )
             # self.gaussians.load_ply("/home/curdinst/repos/MASt3R-SLAM/logs/rgbd_dataset_freiburg1_desk_2025-04-17_09-48-43_wa.ply")
             print(f"num_gaussians: {self.gaussians._xyz.shape}")
@@ -136,6 +144,15 @@ class GaussianOptimizer:
                 render_pkg = render(self.viewpoint_stack[frame_index], self.gaussians, self.pipeline_params, self.background)
                 image = render_pkg["render"]
                 print("image", image.shape)
+                image_rearranged = einops.rearrange(image.cpu().detach().numpy(), "c h w -> h w c")
+                plt.subplot(1, 2, 1)
+                plt.imshow(image_rearranged)
+                plt.subplot(1, 2, 2)
+                gt_img_rearranged = einops.rearrange(self.viewpoint_stack[frame_index].original_image.cpu().detach().numpy(), "c h w -> h w c")
+                plt.imshow(gt_img_rearranged)
+                path = "/home/curdinst/repos/MASt3R-SLAM/logs/"
+                
+                plt.savefig(path + f"render_{frame_index}.png")
         #         del render_pkg
         #         break
         #     break

@@ -727,13 +727,19 @@ class GaussianModel:
 
 
         self._xyz = nn.Parameter(
-            torch.tensor(new_xyz, dtype=torch.float, device="cuda").requires_grad_(True)
+            torch.cat((self._xyz, torch.tensor(new_xyz, dtype=torch.float, device="cuda")), dim=0).requires_grad_(True)
         )
         self._features_dc = nn.Parameter(
-            torch.tensor(new_features_dc, dtype=torch.float, device="cuda")
-            .transpose(1, 2)
-            .contiguous()
-            .requires_grad_(True)
+            torch.cat(
+                (
+                    self._features_dc,
+                    torch.tensor(new_features_dc, dtype=torch.float, device="cuda")
+                    .transpose(1, 2)
+                    .contiguous()
+                    .requires_grad_(True)
+                )
+            , dim=0
+            )
         )
         # self._features_rest = nn.Parameter(
         #     torch.tensor(features_rest, dtype=torch.float, device="cuda")
@@ -742,21 +748,43 @@ class GaussianModel:
         #     .requires_grad_(True)
         # )
         self._features_rest = nn.Parameter(
-            torch.tensor(features_extra, dtype=torch.float, device="cuda")
-            .transpose(1, 2)
-            .contiguous()
-            .requires_grad_(True)
+            torch.cat(
+                (
+                    self._features_rest,
+                    torch.tensor(features_extra, dtype=torch.float, device="cuda")
+                    .transpose(1, 2)
+                    .contiguous()
+                    .requires_grad_(True)
+                )
+                , dim=0
+            )
         )
         self._opacity = nn.Parameter(
-            torch.tensor(new_opacities, dtype=torch.float, device="cuda").requires_grad_(
-                True
+            torch.cat(
+                (
+                    self._opacity,
+                    torch.tensor(new_opacities, dtype=torch.float, device="cuda").requires_grad_(True)
+                )
+            , dim=0
             )
         )
         self._scaling = nn.Parameter(
-            torch.tensor(new_scales, dtype=torch.float, device="cuda").requires_grad_(True)
+            torch.cat(
+                (
+                    self._scaling,
+                    torch.tensor(new_scales, dtype=torch.float, device="cuda").requires_grad_(True)
+                )
+            , dim=0
+            )
         )
         self._rotation = nn.Parameter(
-            torch.tensor(new_rotations, dtype=torch.float, device="cuda").requires_grad_(True)
+            torch.cat(
+                (
+                    self._rotation,
+                    torch.tensor(new_rotations, dtype=torch.float, device="cuda").requires_grad_(True)
+                )
+            , dim=0
+            )
         )
         self.active_sh_degree = self.max_sh_degree
         self.max_radii2D = torch.zeros((self._xyz.shape[0]), device="cuda")
