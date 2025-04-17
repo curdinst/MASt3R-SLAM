@@ -10,6 +10,7 @@ import tqdm
 import yaml
 from mast3r_slam.global_opt import FactorGraph
 
+
 from mast3r_slam.config import load_config, config, set_global_config
 from mast3r_slam.dataloader import Intrinsics, load_dataset
 import mast3r_slam.evaluate as eval
@@ -22,6 +23,7 @@ from mast3r_slam.mast3r_utils import (
 from mast3r_slam.multiprocess_utils import new_queue, try_get_msg
 from mast3r_slam.tracker import FrameTracker
 from mast3r_slam.visualization import WindowMsg, run_visualization
+from gaussian_splatting.gaussian_optimizer import GaussianOptimizer
 import torch.multiprocessing as mp
 import thirdparty.mast3r.mast3r.model as mast3r_model
 
@@ -72,6 +74,31 @@ def relocalization(frame, keyframes, factor_graph, retrieval_database):
                 factor_graph.solve_GN_rays()
         return successful_loop_closure
 
+def run_gaussian_optimization(cfg, dataset, model, states, keyframes: SharedKeyframes):
+    set_global_config(cfg)
+    device = keyframes.device
+    # factor_graph = FactorGraph(model, keyframes, K, device)
+    retrieval_database = load_retriever(model)
+
+    gaussian_optimizer = GaussianOptimizer(config, device)
+    len_frames_before = 0
+    mode = states.get_mode()
+    while mode is not Mode.TERMINATED:
+        mode = states.get_mode()
+        if mode == Mode.INIT or states.is_paused():
+            time.sleep(0.01)
+            continue
+        len_frames = len(keyframes)
+        # print("new frame", new_frame)
+        if len_frames == len_frames_before or len_frames < 2:
+            time.sleep(0.01)
+            continue
+        print("len frames", len_frames)
+        len_frames_before = len_frames
+        gaussian_optimizer.optimize(dataset=dataset, keyframes=keyframes, iters=1)
+
+
+    pass
 
 def run_backend(cfg, model, states, keyframes, K):
     set_global_config(cfg)
@@ -186,7 +213,7 @@ if __name__ == "__main__":
             intrinsics["calibration"],
         )
 
-    keyframes = SharedKeyframes(manager, h, w, buffer=128)
+    keyframes = SharedKeyframes(manager, h, w, buffer=30)
     states = SharedStates(manager, h, w)
 
     if not args.no_viz:
@@ -227,9 +254,14 @@ if __name__ == "__main__":
 
     tracker = FrameTracker(model, keyframes, device)
     last_msg = WindowMsg()
-
+    
+    # torch.cuda.set_per_process_memory_fraction(0.33, device=device)
+        
     backend = mp.Process(target=run_backend, args=(config, model, states, keyframes, K))
     backend.start()
+
+    gaussian_optimizer = mp.Process(target=run_gaussian_optimization, args=(config, dataset, model, states, keyframes))
+    gaussian_optimizer.start()
 
     i = 0
     fps_timer = time.time()
@@ -319,7 +351,7 @@ if __name__ == "__main__":
             FPS = i / (time.time() - fps_timer)
             print(f"FPS: {FPS}")
         i += 1
-        if i == 24:
+        if i == 240:
             print(f"Last timestamp: {timestamp}")
             break
 

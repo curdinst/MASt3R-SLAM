@@ -49,6 +49,25 @@ local_opt:
   delta_norm: 1e-8
   use_cuda: True
 
+gaussians:
+  Calibration:
+    fx: 413.8451264 # 517.306408
+    fy: 413.175372 # 516.469215
+    cx: 254.914432 #318.643040
+    cy: 204.2511912 #255.313989
+    k1: 0.262383
+    k2: -0.953104
+    p1: -0.005358
+    p2: 0.002628
+    k3: 1.163314
+    width: 512 #640
+    height: 384 #480
+    depth_scale: 5000.0
+    distorted: True
+  pipeline_params:
+    convert_SHs_python: False
+    compute_cov3D_python: False
+
 retrieval:
   k: 3
   min_thresh: 5e-3
