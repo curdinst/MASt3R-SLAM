@@ -702,7 +702,7 @@ class GaussianModel:
     def add_points(
         self, new_xyz, new_features_dc, new_opacities, new_scales, new_rotations
     ):
-        print(f"max sh degree: {self.max_sh_degree}")
+        # print(f"max sh degree: {self.max_sh_degree}")
         # self._xyz = torch.cat((self._xyz, new_xyz), dim=0)
         new_features_dc_rearranged = einops.rearrange(new_features_dc, "n c f -> n (c f)")[:, None, :]
         # features_rest = torch.zeros(

@@ -67,6 +67,10 @@ gaussians:
   pipeline_params:
     convert_SHs_python: False
     compute_cov3D_python: False
+  lr:
+    cam_rot_delta: 0.003
+    cam_trans_delta: 0.001
+  rgb_boundary_threshold: 0.01
 
 retrieval:
   k: 3

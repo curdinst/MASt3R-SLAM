@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 import torch
 import einops
+import numpy as np
 from mast3r_slam.dataloader import Intrinsics
 from mast3r_slam.frame import SharedKeyframes
 from mast3r_slam.lietorch_utils import as_SE3
@@ -66,6 +67,7 @@ def save_frame_poses(
 
 
 def save_reconstruction(savedir, filename, keyframes, c_conf_threshold):
+    print(f"C_conf_threshold: {c_conf_threshold}")
     savedir = pathlib.Path(savedir)
     savedir.mkdir(exist_ok=True, parents=True)
     pointclouds = []
