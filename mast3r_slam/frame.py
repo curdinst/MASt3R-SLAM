@@ -144,31 +144,31 @@ class Frame:
         return
 
     # @added
-    def update_gaussians(self, scale: torch.Tensor, rotation: torch.Tensor, SH: torch.Tensor, opacity: torch.Tensor, mean: torch.Tensor, X: torch.Tensor, C: torch.Tensor):
-        filtering_mode = "weighted_pointmap"  # config["tracking"]["filtering_mode"]
-        if self.N_guass == 0:
-            self.SH = SH.clone()
-            self.opacities = opacity.clone()
-            self.offsets = mean.clone() - self.X_canon # only store offsets
-            self.rotations = rotation.clone()
-            self.scales = scale.clone()
-            self.N_guass = 1
-            self.N_gauss_updates = 1
-            return
-
+    def update_gaussians(self, valid_mask: torch.Tensor, scale: torch.Tensor, rotation: torch.Tensor, SH: torch.Tensor, opacity: torch.Tensor, mean: torch.Tensor):
+        filtering_mode = "recent" # "weighted_pointmap"  # config["tracking"]["filtering_mode"]
+        # if self.N_guass == 0:
+        #     self.SH = SH.clone()
+        #     self.opacities = opacity.clone()
+        #     self.offsets = mean.clone() - self.X_canon # only store offsets
+        #     self.rotations = rotation.clone()
+        #     self.scales = scale.clone()
+        #     self.N_guass = 1
+        #     self.N_gauss_updates = 1
+        #     return
+        
         if filtering_mode == "recent":
-            self.SH = SH.clone()
-            self.opacities = opacity.clone()
-            self.offsets = mean.clone() - self.X_canon # only store offsets
-            self.rotations = rotation.clone()
-            self.scales = scale.clone()
-        elif filtering_mode == "weighted_pointmap":
-            self.SH = ((self.C * self.SH) + (C * SH)) / self.C
-            self.opacities = ((self.C * self.opacities) + (C * opacity)) / self.C
-            self.offsets = ((self.C * self.offsets) + (C * (mean - X))) / self.C
-            self.rotations = ((self.C * self.rotations) + (C * rotation)) / self.C
-            self.scales = ((self.C * self.scales) + (C * scale)) / self.C
-            self.N_gauss += 1
+            self.SH[valid_mask] = SH.clone()
+            self.opacities[valid_mask] = opacity.clone()
+            self.offsets[valid_mask] = mean.clone() - self.X_canon[valid_mask] # only store offsets
+            self.rotations[valid_mask] = rotation.clone()
+            self.scales[valid_mask] = scale.clone()
+        # elif filtering_mode == "weighted_pointmap":
+        #     self.SH = ((self.C * self.SH) + (C * SH)) / self.C
+        #     self.opacities = ((self.C * self.opacities) + (C * opacity)) / self.C
+        #     self.offsets = ((self.C * self.offsets) + (C * (mean - X))) / self.C
+        #     self.rotations = ((self.C * self.rotations) + (C * rotation)) / self.C
+        #     self.scales = ((self.C * self.scales) + (C * scale)) / self.C
+        #     self.N_gauss += 1
         self.N_gauss_updates += 1
         return
 
@@ -450,3 +450,11 @@ class SharedKeyframes:
         assert config["use_calib"]
         with self.lock:
             return self.K
+        
+    # def update_gaussians(self, frame_idx, valid_mask, offset, scale, rotation, opacity, SH):
+    #     with self.lock:
+    #         self.SH[frame_idx][valid_mask] = SH
+    #         self.opacities[frame_idx][valid_mask] = opacity
+    #         self.offsets[frame_idx][valid_mask] = offset
+    #         self.rotations[frame_idx][valid_mask] = rotation
+    #         self.scales[frame_idx][valid_mask] = scale
