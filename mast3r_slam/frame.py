@@ -47,6 +47,7 @@ class Frame:
 
     def update_pointmap(self, X: torch.Tensor, C: torch.Tensor, scale: torch.Tensor=None, rotation: torch.Tensor=None, SH: torch.Tensor=None, opacity: torch.Tensor=None, mean: torch.Tensor=None):
         filtering_mode = config["tracking"]["filtering_mode"]
+        # filtering_mode = "first"
 
         if self.N == 0:
             self.X_canon = X.clone()
@@ -69,6 +70,12 @@ class Frame:
                 self.X_canon = X.clone()
                 self.C = C.clone()
                 self.N = 1
+                self.SH = SH.clone()
+                self.opacities = opacity.clone()
+                self.offsets = mean.clone() - self.X_canon # only store offsets
+                self.rotations = rotation.clone()
+                self.scales = scale.clone()
+
         elif filtering_mode == "recent":
             self.X_canon = X.clone()
             self.C = C.clone()

@@ -99,7 +99,7 @@ class GaussianOptimizer:
             "densify_grad_threshold": 0.0002,
         }
         self.opt_params = munchify(opt_params)
-        self.init_lr = 1
+        self.init_lr = 0.05
         self.gaussians.init_lr(self.init_lr)
         self.gaussians.training_setup(self.opt_params)
         self.valid_masks = {}
@@ -184,17 +184,17 @@ class GaussianOptimizer:
         print(f"run Gaussian Optimizer, number of keyframes: {len(keyframes)}")
         # if len(keyframes) > 2: return
         # del self.viewpoint_stack
-        # self.viewpoint_stack = {}
+        self.viewpoint_stack = {}
         # del self.gaussians
-        # self.gaussians = GaussianModel(sh_degree=0)
-        # self.valid_masks = {}
+        self.gaussians = GaussianModel(sh_degree=0)
+        self.valid_masks = {}
         num_keyframes = len(keyframes)
         for idx in range(num_keyframes):
         # for idx in range(2):
 
             keyframe = keyframes[idx]
             # print(f"viewpoint_stack.keys() {self.viewpoint_stack.keys()}")
-            if idx in self.viewpoint_stack.keys(): continue
+            # if idx in self.viewpoint_stack.keys(): continue
             print(f"Adding viewpoint for keyframe {keyframe.frame_id}")
             # gt_color, gt_depth, gt_pose = dataset[keyframe.frame_id]
             viewpoint = Camera(
@@ -278,16 +278,18 @@ class GaussianOptimizer:
         self.gaussians.init_lr(self.init_lr)
         self.gaussians.training_setup(self.opt_params)
         #         break
-        if num_keyframes > 2:
-            optimisation_window = [num_keyframes - 2, num_keyframes - 1]
-            rest_view_idxs = list(range(num_keyframes - 2))
-            random.shuffle(rest_view_idxs)
-            optimisation_window += rest_view_idxs[:1]
+        # if num_keyframes > 2:
+        #     optimisation_window = [num_keyframes - 2, num_keyframes - 1]
+        #     rest_view_idxs = list(range(num_keyframes - 2))
+        #     random.shuffle(rest_view_idxs)
+        #     optimisation_window += rest_view_idxs[:5]
                 
-        else:
-            optimisation_window = list(range(num_keyframes))
+        # else:
+        #     optimisation_window = list(range(num_keyframes))
+        optimisation_window = list(range(num_keyframes))
+        
         print(f"optimisation_window {optimisation_window}")
-        for i in range(0):
+        for i in range(iters):
             self.iteration_count += 1
             loss_mapping = 0
             # for frame_index in range(num_keyframes):
@@ -300,6 +302,7 @@ class GaussianOptimizer:
                 ssim_loss_val = ssim(image, self.viewpoint_stack[frame_index].original_image)
                 # ssim_loss_val = 
                 l1_loss_val = l1_loss(image, self.viewpoint_stack[frame_index].original_image)
+                # loss_mapping = l1_loss_val * 0.75 + 0.25 * (1-ssim_loss_val)
                 loss_mapping = l1_loss_val
                 if i == 0 or i == iters - 1:
                     print(f"frame_index {frame_index} iteration {i} SSIM {round(ssim_loss_val.item(), 8)} L1 {round(l1_loss_val.item(), 8)}")
@@ -308,6 +311,7 @@ class GaussianOptimizer:
 
                 # print("image", image.shape)
                 # print(f"render results: SSIM {round(ssim_loss_val.item(), 3)} L1 {round(l1_loss_val.item(), 3)}")
+
                 # image_rearranged = einops.rearrange(image.cpu().detach().numpy(), "c h w -> h w c")
                 # plt.figure()
                 # plt.title(f"frame_index {frame_index} iteration {i} SSIM {round(ssim_loss_val.item(), 3)} L1 {round(l1_loss_val.item(), 3)}")
@@ -346,17 +350,25 @@ class GaussianOptimizer:
             # print(f"num gaussians {self.gaussians._xyz.shape}, num_valid {num_valid}")
             # print(f"num_valid: {num_valid} a {self.gaussians._xyz[idx:idx+num_valid].shape}, b {keyframes[frame_idx].X_canon[valid].shape}")
             idx_0, idx_1 = gauss_indices[frame_idx], gauss_indices[frame_idx + 1]
-            new_scale = torch.exp(self.gaussians._scaling[idx:idx+num_valid])
-            print("scaling:", self.gaussians._scaling[idx:idx+num_valid])
-            print("scales kf :", keyframes[frame_idx].scales)
+            
             keyframe = keyframes[frame_idx]
+            T_CW = keyframe.T_WC.inv()
+            # print(f"T_WC {keyframe.T_WC.data}")
+            # print(f"T_CW {T_CW.data}")
+            scales_w = torch.exp(self.gaussians._scaling[idx:idx+num_valid]) * T_CW.data[0,-1]
+            rotations_w = self.gaussians._rotation[idx:idx+num_valid]
+            rotations_kf = quat_mult(T_CW.data, rotations_w)
+            means_w = T_CW.act(self.gaussians._xyz[idx:idx+num_valid])
+
+            # print("scaling:", self.gaussians._scaling[idx:idx+num_valid])
+            # print("scales kf :", keyframes[frame_idx].scales)
             keyframe.update_gaussians(
                 valid_mask=valid,
-                scale=new_scale,
-                rotation=self.gaussians._rotation[idx:idx+num_valid],
+                scale=scales_w,
+                rotation=rotations_kf,
                 SH=einops.rearrange(self.gaussians._features_dc[idx:idx+num_valid], "wh d c -> wh c d"),
                 opacity=self.gaussians._opacity[idx:idx+num_valid],
-                mean=self.gaussians._xyz[idx:idx+num_valid],
+                mean=means_w,
             )
             # keyframe.update_gaussians(
             #     valid_mask=valid,
@@ -385,6 +397,8 @@ class GaussianOptimizer:
             # keyframes[frame_idx].opacities[valid] = self.gaussians._opacity[idx:idx+num_valid].clone()
             idx += num_valid
         print(f"updated gaussians of {num_keyframes} keyframes")
+        if num_keyframes == 11:
+            self.gaussians.save_ply(f"/home/curdinst/repos/MASt3R-SLAM/logs/online_opt_{iters}_it.ply")
 
         #         del render_pkg
         #         break
