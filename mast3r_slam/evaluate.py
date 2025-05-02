@@ -100,8 +100,13 @@ def save_gaussian_map(savedir, filename, keyframes, c_conf_threshold):
     scales, rotations, means, sh, opacities = [], [], [], [], []
     num_gaussians = 0
     keyframe_ids = []
+    hw = 512*384
     for i in range(len(keyframes)):
         keyframe = keyframes[i]
+        next_keyframe = keyframes[i+1] if i+1 < len(keyframes) else None
+        if next_keyframe is None:
+            print(f"next keyframe is None, skipping.")
+            break
         if keyframe.SH is None:
             print(f"Keyframe {keyframe.frame_id} has no SH, skipping.")
             continue
@@ -114,15 +119,29 @@ def save_gaussian_map(savedir, filename, keyframes, c_conf_threshold):
         w_rotations = quat_mult(keyframe.T_WC.data, keyframe.rotations).cpu().numpy()
         # w_rotations = keyframe.rotations.cpu().numpy()
         rotations_new = w_rotations
-        w_means = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets).cpu().numpy()
+        # w_means = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets).cpu().numpy()
+        means_this_frame = keyframe.X_canon + keyframe.offsets[:hw]
+        w_means_this_frame = keyframe.T_WC.act(means_this_frame)
+        w_means_next_frame = next_keyframe.T_WC.act(next_keyframe.X_canon + keyframe.offsets[hw:])
+        # w_means = keyframe.T_WC.act(torch.cat((w_means_this_frame, w_means_next_frame), dim=0)).cpu().numpy()
+        w_means = torch.cat((w_means_this_frame, w_means_next_frame), dim=0).cpu().numpy()
+        # w_means = keyframe.T_WC.act(keyframe.offsets[]).cpu().numpy()
         means_new = w_means
         print(f"shape of kf conf: {keyframe.get_average_conf().cpu().numpy().astype(np.float32).shape}")
         valid = (
             keyframe.get_average_conf().cpu().numpy().astype(np.float32).reshape(-1)
             > c_conf_threshold
         )
-        valid_tensor = torch.tensor(valid, dtype=torch.bool)
-        torch.save(valid_tensor, masks_dir / f"{keyframe.frame_id}.pt")
+        valid_double = torch.ones((2*len(valid),), dtype=torch.bool)
+        valid_double[:len(valid)] = torch.tensor(valid, dtype=torch.bool)
+        valid = valid_double
+        # valid_tensor = torch.tensor(valid, dtype=torch.bool)
+        # torch.save(valid_tensor, masks_dir / f"{keyframe.frame_id}.pt")
+        print(f"scales_new: {scales_new}")
+        print(f"rotations_new: {rotations_new}")
+        # if scales_new[0,0] == 0:
+        #     print("Invalid scale of 0, skipping keyframe")
+        #     continue
         rotations.append(rotations_new[valid])
         scales.append(scales_new[valid])
         means.append(means_new[valid])

@@ -238,7 +238,8 @@ class GaussianOptimizer:
             scales_new = (keyframe.T_WC.data[0,-1] * keyframe.scales)
             opacities_new = keyframe.opacities
             w_rotations = quat_mult(keyframe.T_WC.data, keyframe.rotations)
-            w_means = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets)
+            # w_means = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets)
+            w_means = keyframe.T_WC.act(keyframe.offsets)
 
             colors = einops.rearrange(keyframe.img, "(d c) h w -> (h w) c d", d=1)
 
@@ -261,12 +262,19 @@ class GaussianOptimizer:
                 )
             else:
                 print(f"adding {valid.sum()} points to gaussians")
+                # self.gaussians.add_points(
+                #     new_xyz=w_means[valid],
+                #     new_features_dc=keyframe.SH[valid],
+                #     new_opacities=opacities_new[valid],
+                #     new_scales=scales_new[valid],
+                #     new_rotations=w_rotations[valid]
+                # )
                 self.gaussians.add_points(
-                    new_xyz=w_means[valid],
-                    new_features_dc=keyframe.SH[valid],
-                    new_opacities=opacities_new[valid],
-                    new_scales=scales_new[valid],
-                    new_rotations=w_rotations[valid]
+                    new_xyz=w_means,
+                    new_features_dc=keyframe.SH,
+                    new_opacities=opacities_new,
+                    new_scales=scales_new,
+                    new_rotations=w_rotations
                 )
             # self.gaussians.load_ply("/home/curdinst/repos/MASt3R-SLAM/logs/rgbd_dataset_freiburg1_desk_2025-04-17_09-48-43_wa.ply")
             print(f"num_gaussians: {self.gaussians._xyz.shape}")
@@ -312,30 +320,31 @@ class GaussianOptimizer:
                 # print("image", image.shape)
                 # print(f"render results: SSIM {round(ssim_loss_val.item(), 3)} L1 {round(l1_loss_val.item(), 3)}")
 
-                # image_rearranged = einops.rearrange(image.cpu().detach().numpy(), "c h w -> h w c")
-                # plt.figure()
-                # plt.title(f"frame_index {frame_index} iteration {i} SSIM {round(ssim_loss_val.item(), 3)} L1 {round(l1_loss_val.item(), 3)}")
-                # plt.axis("off")
-                # plt.subplot(1, 2, 1)
-                # a,b = np.min(image_rearranged), np.max(image_rearranged)
-                # plt.imshow((image_rearranged - a)/(b-a))
-                # plt.subplot(1, 2, 2)
-                # gt_img_rearranged = einops.rearrange(self.viewpoint_stack[frame_index].original_image.cpu().detach().numpy(), "c h w -> h w c")
-                # a,b = np.min(gt_img_rearranged), np.max(gt_img_rearranged)
-                # plt.imshow((gt_img_rearranged- a)/(b-a) )
+                image_rearranged = einops.rearrange(image.cpu().detach().numpy(), "c h w -> h w c")
+                plt.figure()
+                plt.title(f"frame_index {frame_index} iteration {i} SSIM {round(ssim_loss_val.item(), 3)} L1 {round(l1_loss_val.item(), 3)}")
+                plt.axis("off")
+                plt.subplot(1, 2, 1)
+                a,b = np.min(image_rearranged), np.max(image_rearranged)
+                plt.imshow((image_rearranged - a)/(b-a))
+                plt.subplot(1, 2, 2)
+                gt_img_rearranged = einops.rearrange(self.viewpoint_stack[frame_index].original_image.cpu().detach().numpy(), "c h w -> h w c")
+                a,b = np.min(gt_img_rearranged), np.max(gt_img_rearranged)
+                plt.imshow((gt_img_rearranged- a)/(b-a) )
 
-                # path = "/home/curdinst/repos/MASt3R-SLAM/logs/"
+                path = "/home/curdinst/repos/MASt3R-SLAM/logs/"
                 
-                # plt.savefig(path + f"render_{frame_index}.png")
-                # plt.close()
+                plt.savefig(path + f"render_{frame_index}.png")
+                plt.close()
+                print(f"saved figures to {path}render_{frame_index}.png")
                 
                 
-            loss_mapping.backward()
-            with torch.no_grad():
-                self.gaussians.optimizer.step()
-                self.gaussians.optimizer.zero_grad(set_to_none=True)
-                self.gaussians.update_learning_rate(idx)
-                loss_mapping = 0
+                loss_mapping.backward()
+                with torch.no_grad():
+                    self.gaussians.optimizer.step()
+                    self.gaussians.optimizer.zero_grad(set_to_none=True)
+                    self.gaussians.update_learning_rate(idx)
+                    loss_mapping = 0
         
 
         # Overwrite

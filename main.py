@@ -95,7 +95,7 @@ def run_gaussian_optimization(cfg, dataset, model, states, keyframes: SharedKeyf
             continue
         print("len frames", len_frames)
         len_frames_before = len_frames
-        gaussian_optimizer.optimize(dataset=dataset, keyframes=keyframes, iters=100)
+        gaussian_optimizer.optimize(dataset=dataset, keyframes=keyframes, iters=1)
 
 
     pass
@@ -260,8 +260,8 @@ if __name__ == "__main__":
     backend = mp.Process(target=run_backend, args=(config, model, states, keyframes, K))
     backend.start()
 
-    gaussian_optimizer = mp.Process(target=run_gaussian_optimization, args=(config, dataset, model, states, keyframes))
-    gaussian_optimizer.start()
+    # gaussian_optimizer = mp.Process(target=run_gaussian_optimization, args=(config, dataset, model, states, keyframes))
+    # gaussian_optimizer.start()
 
     i = 0
     fps_timer = time.time()
@@ -351,7 +351,7 @@ if __name__ == "__main__":
             FPS = i / (time.time() - fps_timer)
             print(f"FPS: {FPS}")
         i += 1
-        if i == 160:
+        if i == 240:
             print(f"Last timestamp: {timestamp}")
             break
 

@@ -131,8 +131,8 @@ class FrameTracker:
         # Skk = Skf
         keyframe.update_pointmap(Xkk, Ckf, Skk, Rkk, SHkf, Okf, Mkk)
 
-
-
+        keyframe.update_double_gaussians(gaussian_params, Xff, Cff, Ckf, T_CkCf)
+        print(f"Update keyframe {keyframe.frame_id} with frame {frame.frame_id}")
         # Rkk = T_CkCf.act(Rkf)
         # print(f"update gaussians of frame {keyframe.frame_id}")
         # keyframe.update_gaussians()
@@ -153,6 +153,16 @@ class FrameTracker:
         # Rest idx if new keyframe
         if new_kf:
             self.reset_idx_f2k()
+
+            # self.keyframes[len(self.keyframes) - 1] = keyframe
+
+        # frame.update_gaussians(
+        #     valid_mask=None,
+        #     scale=scale_CkCf,
+        #     rotation=Rkk,
+        #     shape=Skk,
+        #     offset=Okf,
+        #     )
         # print("Tracking end, new_kf", new_kf)
         # print(f"frame_id {frame.frame_id}, T_WCf {frame.T_WC.data}")
         # Store the frame.T_CW in a txt file

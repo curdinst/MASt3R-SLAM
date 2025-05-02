@@ -5,6 +5,14 @@ import lietorch
 import torch
 from mast3r_slam.mast3r_utils import resize_img
 from mast3r_slam.config import config
+from mast3r_slam.geometry import (
+    act_Sim3,
+    point_to_ray_dist,
+    get_pixel_coords,
+    constrain_points_to_ray,
+    project_calib,
+    quat_mult,
+)
 
 
 class Mode(Enum):
@@ -57,12 +65,12 @@ class Frame:
             if filtering_mode == "best_score":
                 self.score = self.get_score(C)
             # Gaussian params
-            if scale is not None:
-                self.SH = SH.clone()
-                self.opacities = opacity.clone()
-                self.offsets = mean.clone() - self.X_canon # only store offsets
-                self.rotations = rotation.clone()
-                self.scales = scale.clone()
+            # if scale is not None:
+            #     self.SH = SH.clone()
+            #     self.opacities = opacity.clone()
+            #     self.offsets = mean.clone() - self.X_canon # only store offsets
+            #     self.rotations = rotation.clone()
+            #     self.scales = scale.clone()
             return
 
         if filtering_mode == "first":
@@ -96,29 +104,29 @@ class Frame:
             self.X_canon = ((self.C * self.X_canon) + (C * X)) / (self.C + C)
             
             # Gaussian params
-            gaussian_filtering_mode = ["weigtend_average", "recent", "first"][0]
+            # gaussian_filtering_mode = ["weigtend_average", "recent", "first"][0]
 
-            if gaussian_filtering_mode == "weigtend_average" and scale is not None and self.scales is not None:
-                # self.SH = ((self.C.unsqueeze(1) * self.SH) + (C.unsqueeze(1) * SH)) / self.C.unsqueeze(1)
-                self.SH = SH.clone()
-                # print(f"C shape: {C.shape}, SH shape: {SH.shape}")
-                self.opacities = ((self.C * self.opacities) + (C * opacity)) / (self.C  + C)
-                self.offsets = ((self.C * self.offsets) + (C * (mean - X))) / (self.C  + C)
-                self.rotations = ((self.C * self.rotations) + (C * rotation)) / (self.C  + C)
-                self.scales = ((self.C * self.scales) + (C * scale)) / (self.C  + C)
-            elif gaussian_filtering_mode == "recent" and scale is not None:
-                self.SH = SH.clone()
-                self.opacities = opacity.clone()
-                self.offsets = mean.clone() - self.X_canon # only store offsets
-                self.rotations = rotation.clone()
-                self.scales = scale.clone()
-            elif gaussian_filtering_mode == "first" and scale is not None and self.N_updates == 1:
-                print("Save First Gaussian params")
-                self.SH = SH.clone()
-                self.opacities = opacity.clone()
-                self.offsets = mean.clone() - self.X_canon # only store offsets
-                self.rotations = rotation.clone()
-                self.scales = scale.clone()
+            # if gaussian_filtering_mode == "weigtend_average" and scale is not None and self.scales is not None:
+            #     # self.SH = ((self.C.unsqueeze(1) * self.SH) + (C.unsqueeze(1) * SH)) / self.C.unsqueeze(1)
+            #     self.SH = SH.clone()
+            #     # print(f"C shape: {C.shape}, SH shape: {SH.shape}")
+            #     self.opacities = ((self.C * self.opacities) + (C * opacity)) / (self.C  + C)
+            #     self.offsets = ((self.C * self.offsets) + (C * (mean - X))) / (self.C  + C)
+            #     self.rotations = ((self.C * self.rotations) + (C * rotation)) / (self.C  + C)
+            #     self.scales = ((self.C * self.scales) + (C * scale)) / (self.C  + C)
+            # elif gaussian_filtering_mode == "recent" and scale is not None:
+            #     self.SH = SH.clone()
+            #     self.opacities = opacity.clone()
+            #     self.offsets = mean.clone() - self.X_canon # only store offsets
+            #     self.rotations = rotation.clone()
+            #     self.scales = scale.clone()
+            # elif gaussian_filtering_mode == "first" and scale is not None and self.N_updates == 1:
+            #     print("Save First Gaussian params")
+            #     self.SH = SH.clone()
+            #     self.opacities = opacity.clone()
+            #     self.offsets = mean.clone() - self.X_canon # only store offsets
+            #     self.rotations = rotation.clone()
+            #     self.scales = scale.clone()
             self.C = self.C + C
             self.N += 1
         elif filtering_mode == "weighted_spherical":
@@ -152,7 +160,7 @@ class Frame:
 
     # @added
     def update_gaussians(self, valid_mask: torch.Tensor, scale: torch.Tensor, rotation: torch.Tensor, SH: torch.Tensor, opacity: torch.Tensor, mean: torch.Tensor):
-        filtering_mode = "recent" # "weighted_pointmap"  # config["tracking"]["filtering_mode"]
+        # filtering_mode = "recent" # "weighted_pointmap"  # config["tracking"]["filtering_mode"]
         # if self.N_guass == 0:
         #     self.SH = SH.clone()
         #     self.opacities = opacity.clone()
@@ -163,7 +171,14 @@ class Frame:
         #     self.N_gauss_updates = 1
         #     return
         
-        if filtering_mode == "recent":
+        return
+        if valid_mask is None:
+            self.SH = SH.clone()
+            self.opacities = opacity.clone()
+            self.offsets = mean.clone() - self.X_canon # only store offsets
+            self.rotations = rotation.clone()
+            self.scales = scale.clone()
+        else:
             self.SH[valid_mask] = SH.clone()
             self.opacities[valid_mask] = opacity.clone()
             self.offsets[valid_mask] = mean.clone() - self.X_canon[valid_mask] # only store offsets
@@ -178,6 +193,25 @@ class Frame:
         #     self.N_gauss += 1
         self.N_gauss_updates += 1
         return
+
+    def update_double_gaussians(self, gaussian_params, Xff, Cff, Ckf, T_CkCf):
+        (Sff, Rff, SHff, Off, Mff, Skf, Rkf, SHkf, Okf, Mkf) = gaussian_params
+        Mfk, Mkk = T_CkCf.act(Mff), T_CkCf.act(Mkf)
+        Sfk, Skk = T_CkCf.data[0,-1]*Sff, T_CkCf.data[0,-1]*Skf
+        Rfk, Rkk = quat_mult(T_CkCf.data, Rff), quat_mult(T_CkCf.data, Rkf)
+        # SHfk, SHkk = SHff, SHkf
+        Ofk, Okk = Off, Okf
+        offsets_kk = Mkk - self.X_canon
+        # offsets_fk = Mfk - T_CkCf.act(Xff)
+        offsets_ff = Mff - Xff
+        self.offsets = torch.cat((offsets_kk, offsets_ff), dim=0)
+        self.scales = torch.cat((Skk, Sfk), dim=0)
+        # print(f"scales: {self.scales}")
+        self.rotations = torch.cat((Rkk, Rfk), dim=0)
+        self.opacities = torch.cat((Okk, Ofk), dim=0)
+        self.SH = torch.cat((SHkf, SHff), dim=0)
+        print(f"Double Gaussians: {self.SH.shape}, {self.offsets.shape}, {self.scales.shape}, {self.rotations.shape}, {self.opacities.shape}")
+        
 
     def get_average_conf(self):
         return self.C / self.N if self.C is not None else None
@@ -228,11 +262,11 @@ class SharedStates:
         self.feat = torch.zeros(1, self.num_patches, self.feat_dim, device=device, dtype=dtype).share_memory_()
         self.pos = torch.zeros(1, self.num_patches, 2, device=device, dtype=torch.long).share_memory_()
         # Gaussian parameters
-        self.SH = torch.zeros(h * w, 3, 1, device=device, dtype=dtype).share_memory_()
-        self.opacities = torch.zeros(h * w, 1, device=device, dtype=dtype).share_memory_()
-        self.offsets = torch.zeros(h * w, 3, device=device, dtype=dtype).share_memory_()
-        self.rotations = torch.zeros(h * w, 4, device=device, dtype=dtype).share_memory_()
-        self.scales = torch.zeros(h * w, 3, device=device, dtype=dtype).share_memory_()
+        self.SH = torch.zeros(2 * h * w, 3, 1, device=device, dtype=dtype).share_memory_()
+        self.opacities = torch.zeros(2 * h * w, 1, device=device, dtype=dtype).share_memory_()
+        self.offsets = torch.zeros(2 * h * w, 3, device=device, dtype=dtype).share_memory_()
+        self.rotations = torch.zeros(2 * h * w, 4, device=device, dtype=dtype).share_memory_()
+        self.scales = torch.zeros(2 * h * w, 3, device=device, dtype=dtype).share_memory_()
         # fmt: on
 
     def set_frame(self, frame):
@@ -345,11 +379,11 @@ class SharedKeyframes:
         self.is_dirty = torch.zeros(buffer, 1, device=device, dtype=torch.bool).share_memory_()
         self.K = torch.zeros(3, 3, device=device, dtype=dtype).share_memory_()
         # fmt: on
-        self.SH = torch.zeros(buffer, h * w, 3, 1, device=device, dtype=dtype).share_memory_()
-        self.opacities = torch.zeros(buffer, h * w, 1, device=device, dtype=dtype).share_memory_()
-        self.offsets = torch.zeros(buffer, h * w, 3, device=device, dtype=dtype).share_memory_()
-        self.rotations = torch.zeros(buffer, h * w, 4, device=device, dtype=dtype).share_memory_()
-        self.scales = torch.zeros(buffer, h * w, 3, device=device, dtype=dtype).share_memory_()
+        self.SH = torch.zeros(buffer, 2 * h * w, 3, 1, device=device, dtype=dtype).share_memory_()
+        self.opacities = torch.zeros(buffer, 2 * h * w, 1, device=device, dtype=dtype).share_memory_()
+        self.offsets = torch.zeros(buffer, 2 * h * w, 3, device=device, dtype=dtype).share_memory_()
+        self.rotations = torch.zeros(buffer, 2 * h * w, 4, device=device, dtype=dtype).share_memory_()
+        self.scales = torch.zeros(buffer, 2 * h * w, 3, device=device, dtype=dtype).share_memory_()
 
     def __getitem__(self, idx) -> Frame:
         with self.lock:
