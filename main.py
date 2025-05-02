@@ -95,7 +95,7 @@ def run_gaussian_optimization(cfg, dataset, model, states, keyframes: SharedKeyf
             continue
         print("len frames", len_frames)
         len_frames_before = len_frames
-        gaussian_optimizer.optimize(dataset=dataset, keyframes=keyframes, iters=30)
+        gaussian_optimizer.optimize(dataset=dataset, keyframes=keyframes, iters=100)
 
 
     pass
@@ -351,7 +351,7 @@ if __name__ == "__main__":
             FPS = i / (time.time() - fps_timer)
             print(f"FPS: {FPS}")
         i += 1
-        if i == 240:
+        if i == 160:
             print(f"Last timestamp: {timestamp}")
             break
 

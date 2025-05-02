@@ -213,7 +213,7 @@ class GaussianOptimizer:
                 self.intrinsics.width,
                 device=self.device,
             )
-            print(f"keyframe {keyframe.frame_id} T_WC {keyframe.T_WC.data}")
+            # print(f"keyframe {keyframe.frame_id} T_WC {keyframe.T_WC.data}")
             rot = R.from_quat(keyframe.T_WC.data[0,3:7].cpu()).as_matrix()
             viewpoint.R  = torch.from_numpy(rot).to(device=self.device).T
             viewpoint.T = -viewpoint.R.float() @ keyframe.T_WC.data[0,:3].float()
@@ -227,7 +227,7 @@ class GaussianOptimizer:
             viewpoint.image_height = 384
             self.viewpoint_stack[idx] = viewpoint
             # if i == len(keyframes):
-            print("add points to gaussians")
+            # print("add points to gaussians")
             c_conf_threshold = 1.5
             valid = (
                         keyframe.get_average_conf().reshape(-1)
@@ -278,15 +278,15 @@ class GaussianOptimizer:
         self.gaussians.init_lr(self.init_lr)
         self.gaussians.training_setup(self.opt_params)
         #         break
-        # if num_keyframes > 2:
-        #     optimisation_window = [num_keyframes - 2, num_keyframes - 1]
-        #     rest_view_idxs = list(range(num_keyframes - 2))
-        #     random.shuffle(rest_view_idxs)
-        #     optimisation_window += rest_view_idxs[:5]
+        if num_keyframes > 2:
+            optimisation_window = [num_keyframes - 2, num_keyframes - 1]
+            rest_view_idxs = list(range(num_keyframes - 2))
+            random.shuffle(rest_view_idxs)
+            optimisation_window += rest_view_idxs[:2]
                 
-        # else:
-        #     optimisation_window = list(range(num_keyframes))
-        optimisation_window = list(range(num_keyframes))
+        else:
+            optimisation_window = list(range(num_keyframes))
+        # optimisation_window = list(range(num_keyframes))
         
         print(f"optimisation_window {optimisation_window}")
         for i in range(iters):
@@ -303,7 +303,7 @@ class GaussianOptimizer:
                 # ssim_loss_val = 
                 l1_loss_val = l1_loss(image, self.viewpoint_stack[frame_index].original_image)
                 # loss_mapping = l1_loss_val * 0.75 + 0.25 * (1-ssim_loss_val)
-                loss_mapping = l1_loss_val
+                loss_mapping += l1_loss_val
                 if i == 0 or i == iters - 1:
                     print(f"frame_index {frame_index} iteration {i} SSIM {round(ssim_loss_val.item(), 8)} L1 {round(l1_loss_val.item(), 8)}")
                 # l1_loss_mask = torch.abs(image - self.viewpoint_stack[frame_index].original_image).mean(dim=0)
@@ -330,12 +330,12 @@ class GaussianOptimizer:
                 # plt.close()
                 
                 
-                loss_mapping.backward()
-                with torch.no_grad():
-                    self.gaussians.optimizer.step()
-                    self.gaussians.optimizer.zero_grad(set_to_none=True)
-                    self.gaussians.update_learning_rate(idx)
-                    loss_mapping = 0
+            loss_mapping.backward()
+            with torch.no_grad():
+                self.gaussians.optimizer.step()
+                self.gaussians.optimizer.zero_grad(set_to_none=True)
+                self.gaussians.update_learning_rate(idx)
+                loss_mapping = 0
         
 
         # Overwrite
