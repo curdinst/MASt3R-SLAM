@@ -295,6 +295,7 @@ class GaussianOptimizer:
                     new_scales=scales_new,
                     new_rotations=w_rotations,
                 )
+                print(f"sh max: {keyframe.SH.max()}, min {keyframe.SH.min()}")
                 # print(f"gaussians.features_dc {self.gaussians._features_dc}")
                 # print(f"gaussians._xyz {self.gaussians._xyz}")
                 # print(f"gaussians._opacity {self.gaussians._opacity}")
@@ -338,9 +339,9 @@ class GaussianOptimizer:
                 image = render_pkg["render"]
                 image = (torch.exp(viewpoint.exposure_a)) * image + viewpoint.exposure_b
                 # print(f"exposure_a {viewpoint.exposure_a}, exposure_b {viewpoint.exposure_b}")
-                ssim_loss_val = ssim(image, self.viewpoint_stack[frame_index].original_image)
+                ssim_loss_val = ssim(image, self.viewpoint_stack[frame_index].original_image / 2 + 0.5)
                 # ssim_loss_val = 
-                l1_loss_val = l1_loss(image, self.viewpoint_stack[frame_index].original_image)
+                l1_loss_val = l1_loss(image, self.viewpoint_stack[frame_index].original_image / 2 + 0.5)
                 # loss_mapping = l1_loss_val * 0.75 + 0.25 * (1-ssim_loss_val)
                 loss_mapping += l1_loss_val
                 if i == 0 or i == iters - 1:
@@ -357,11 +358,15 @@ class GaussianOptimizer:
                 plt.axis("off")
                 plt.subplot(1, 2, 1)
                 a,b = np.min(image_rearranged), np.max(image_rearranged)
-                plt.imshow((image_rearranged - a)/(b-a))
+                print(f"image min {a}, max {b}")
+                # plt.imshow((image_rearranged - a)/(b-a))
+                plt.imshow(image_rearranged)
                 plt.subplot(1, 2, 2)
                 gt_img_rearranged = einops.rearrange(self.viewpoint_stack[frame_index].original_image.cpu().detach().numpy(), "c h w -> h w c")
                 a,b = np.min(gt_img_rearranged), np.max(gt_img_rearranged)
-                plt.imshow((gt_img_rearranged- a)/(b-a) )
+                print(f"gt_img min {a}, max {b}")
+                # plt.imshow((gt_img_rearranged- a)/(b-a) )
+                plt.imshow(gt_img_rearranged / 2 + 0.5)
 
                 path = "/home/curdinst/repos/MASt3R-SLAM/logs/"
                 

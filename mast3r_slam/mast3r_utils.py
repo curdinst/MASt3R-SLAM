@@ -249,8 +249,13 @@ def mast3r_match_asymmetric(model, frame_i, frame_j, idx_i2j_init=None):
     # add frame colors to sh colors
     new_sh1 = torch.zeros_like(SHii)
     new_sh2 = torch.zeros_like(SHji)
-    new_sh1[..., 0] = sh_utils.RGB2SH(einops.rearrange(frame_i.img, 'b c h w -> b (h w) c'))
-    new_sh2[..., 0] = sh_utils.RGB2SH(einops.rearrange(frame_j.img, '(b c) h w -> b (h w) c', b=1))
+    # print(f"max frame_i img: {frame_i.img.max()}, min: {frame_i.img.min()}")
+    # print(f"max frame_i img: {(frame_i.img/2 + 0.5).max()}, min: {(frame_i.img/2 + 0.5).min()}")
+
+    new_sh1[..., 0] = sh_utils.RGB2SH(einops.rearrange(frame_i.img/2 + 0.5, 'b c h w -> b (h w) c'))
+    # new_sh1[..., 0] = einops.rearrange(frame_i.img, 'b c h w -> b (h w) c')
+    new_sh2[..., 0] = sh_utils.RGB2SH(einops.rearrange(frame_j.img/2 + 0.5, '(b c) h w -> b (h w) c', b=1))
+    # new_sh2[..., 0] = einops.rearrange(frame_j.img, '(b c) h w -> b (h w) c', b=1)
     SHii = SHii + new_sh1
     SHji = SHji + new_sh2
 
