@@ -219,7 +219,7 @@ class GaussianOptimizer:
             viewpoint.T = -viewpoint.R.float() @ keyframe.T_WC.data[0,:3].float()
             # viewpoint.R = torch.from_numpy(rot).to(device=self.device)
             # viewpoint.T = keyframe.T_WC.data[0,:3].float()
-            viewpoint.original_image = keyframe.img.clone().to(device=self.device)
+            viewpoint.original_image = keyframe.img.clone().to(device=self.device)/2.0+0.5
             # print(f"imgshape {keyframe.img.shape}")
             # print(f"viewpoint.image_width {viewpoint.image_width}")
             # print(f"viewpoint.image_height {viewpoint.image_height}")
@@ -240,7 +240,6 @@ class GaussianOptimizer:
             w_rotations = quat_mult(keyframe.T_WC.data, keyframe.rotations)
             w_means = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets)
 
-            colors = einops.rearrange(keyframe.img, "(d c) h w -> (h w) c d", d=1)
 
             if False and idx > 1:
                 render_pkg = render(self.viewpoint_stack[idx], self.gaussians, self.pipeline_params, self.background)
@@ -312,22 +311,22 @@ class GaussianOptimizer:
                 # print("image", image.shape)
                 # print(f"render results: SSIM {round(ssim_loss_val.item(), 3)} L1 {round(l1_loss_val.item(), 3)}")
 
-                # image_rearranged = einops.rearrange(image.cpu().detach().numpy(), "c h w -> h w c")
-                # plt.figure()
-                # plt.title(f"frame_index {frame_index} iteration {i} SSIM {round(ssim_loss_val.item(), 3)} L1 {round(l1_loss_val.item(), 3)}")
-                # plt.axis("off")
-                # plt.subplot(1, 2, 1)
-                # a,b = np.min(image_rearranged), np.max(image_rearranged)
-                # plt.imshow((image_rearranged - a)/(b-a))
-                # plt.subplot(1, 2, 2)
-                # gt_img_rearranged = einops.rearrange(self.viewpoint_stack[frame_index].original_image.cpu().detach().numpy(), "c h w -> h w c")
-                # a,b = np.min(gt_img_rearranged), np.max(gt_img_rearranged)
-                # plt.imshow((gt_img_rearranged- a)/(b-a) )
-
-                # path = "/home/curdinst/repos/MASt3R-SLAM/logs/"
-                
-                # plt.savefig(path + f"render_{frame_index}.png")
-                # plt.close()
+                save_plot = True
+                if save_plot:
+                    image_rearranged = einops.rearrange(image.cpu().detach().numpy(), "c h w -> h w c")
+                    plt.figure()
+                    plt.title(f"frame_index {frame_index} iteration {i} SSIM {round(ssim_loss_val.item(), 3)} L1 {round(l1_loss_val.item(), 3)}")
+                    plt.axis("off")
+                    plt.subplot(1, 2, 1)
+                    a,b = np.min(image_rearranged), np.max(image_rearranged)
+                    plt.imshow((image_rearranged - a)/(b-a))
+                    plt.subplot(1, 2, 2)
+                    gt_img_rearranged = einops.rearrange(self.viewpoint_stack[frame_index].original_image.cpu().detach().numpy(), "c h w -> h w c")
+                    a,b = np.min(gt_img_rearranged), np.max(gt_img_rearranged)
+                    plt.imshow((gt_img_rearranged- a)/(b-a) )
+                    path = "/home/curdinst/repos/MASt3R-SLAM/logs/"
+                    plt.savefig(path + f"render_{frame_index}.png")
+                    plt.close()
                 
                 
             loss_mapping.backward()
