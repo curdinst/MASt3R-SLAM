@@ -120,21 +120,26 @@ def save_gaussian_map(savedir, filename, keyframes, c_conf_threshold):
         # w_rotations = keyframe.rotations.cpu().numpy()
         rotations_new = w_rotations
         # w_means = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets).cpu().numpy()
-        means_this_frame = keyframe.X_canon + keyframe.offsets[:hw]
-        w_means_this_frame = keyframe.T_WC.act(means_this_frame)
+        w_means_this_frame = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets[:hw])
         w_means_next_frame = next_keyframe.T_WC.act(next_keyframe.X_canon + keyframe.offsets[hw:])
         # w_means = keyframe.T_WC.act(torch.cat((w_means_this_frame, w_means_next_frame), dim=0)).cpu().numpy()
         w_means = torch.cat((w_means_this_frame, w_means_next_frame), dim=0).cpu().numpy()
         # w_means = keyframe.T_WC.act(keyframe.offsets[]).cpu().numpy()
         means_new = w_means
         print(f"shape of kf conf: {keyframe.get_average_conf().cpu().numpy().astype(np.float32).shape}")
-        valid = (
+        valid_this_frame = (
             keyframe.get_average_conf().cpu().numpy().astype(np.float32).reshape(-1)
             > c_conf_threshold
         )
-        valid_double = torch.ones((2*len(valid),), dtype=torch.bool)
-        valid_double[:len(valid)] = torch.tensor(valid, dtype=torch.bool)
-        valid = valid_double
+        valid_next_frame = (
+            next_keyframe.get_average_conf().cpu().numpy().astype(np.float32).reshape(-1)
+            > c_conf_threshold
+        )
+        # valid_double = torch.ones((2*len(valid),), dtype=torch.bool)
+        # valid_double[:len(valid)] = torch.tensor(valid, dtype=torch.bool)
+        # valid = valid_double
+        valid = np.concatenate((valid_this_frame, valid_next_frame), axis=0)
+
         # valid_tensor = torch.tensor(valid, dtype=torch.bool)
         # torch.save(valid_tensor, masks_dir / f"{keyframe.frame_id}.pt")
         print(f"scales_new: {scales_new}")

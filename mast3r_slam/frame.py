@@ -210,7 +210,14 @@ class Frame:
         self.rotations = torch.cat((Rkk, Rfk), dim=0)
         self.opacities = torch.cat((Okk, Ofk), dim=0)
         self.SH = torch.cat((SHkf, SHff), dim=0)
-        print(f"Double Gaussians: {self.SH.shape}, {self.offsets.shape}, {self.scales.shape}, {self.rotations.shape}, {self.opacities.shape}")
+
+        # self.offsets = torch.cat((Mff, Mkf), dim=0)
+        # self.scales = torch.cat((Sff, Skf), dim=0)
+        # # print(f"scales: {self.scales}")
+        # self.rotations = torch.cat((Rff, Rkf), dim=0)
+        # self.opacities = torch.cat((Off, Okf), dim=0)
+        # self.SH = torch.cat((SHff, SHkf), dim=0)
+        # print(f"Double Gaussians: {self.SH.shape}, {self.offsets.shape}, {self.scales.shape}, {self.rotations.shape}, {self.opacities.shape}")
         
 
     def get_average_conf(self):

@@ -62,6 +62,7 @@ class GaussianOptimizer:
         self.initialized = not self.monocular
         self.keyframe_optimizers = None
         self.background = torch.tensor([0, 0, 0], dtype=torch.float32, device=device)
+        self.hw = 512*384
         
         print(f"intrinsics: {config['gaussians']['Calibration']}")
         intrinsics = munchify(config["gaussians"]["Calibration"])
@@ -188,11 +189,14 @@ class GaussianOptimizer:
         # del self.gaussians
         self.gaussians = GaussianModel(sh_degree=0)
         self.valid_masks = {}
+        c_conf_threshold = 1.5
         num_keyframes = len(keyframes)
-        for idx in range(num_keyframes):
+        self.valid_masks = [(keyframes[i].get_average_conf().reshape(-1) > c_conf_threshold) for i in range(num_keyframes)]
+        for idx in range(num_keyframes-1):
         # for idx in range(2):
 
             keyframe = keyframes[idx]
+            next_keyframe = keyframes[idx + 1]
             # print(f"viewpoint_stack.keys() {self.viewpoint_stack.keys()}")
             # if idx in self.viewpoint_stack.keys(): continue
             print(f"Adding viewpoint for keyframe {keyframe.frame_id}")
@@ -228,18 +232,20 @@ class GaussianOptimizer:
             self.viewpoint_stack[idx] = viewpoint
             # if i == len(keyframes):
             # print("add points to gaussians")
-            c_conf_threshold = 1.5
-            valid = (
-                        keyframe.get_average_conf().reshape(-1)
-                        > c_conf_threshold
-                    )
-            self.valid_masks[idx] = valid
+            # valid = (
+            #             keyframe.get_average_conf().reshape(-1)
+            #             > c_conf_threshold
+            #         )
+            # self.valid_masks[idx] = valid
             # valid = np.ones_like(valid, dtype=bool)
             scales_new = (keyframe.T_WC.data[0,-1] * keyframe.scales)
             opacities_new = keyframe.opacities
             w_rotations = quat_mult(keyframe.T_WC.data, keyframe.rotations)
             # w_means = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets)
-            w_means = keyframe.T_WC.act(keyframe.offsets)
+            w_means_this_frame = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets[:self.hw])
+            w_means_next_frame = next_keyframe.T_WC.act(next_keyframe.X_canon + keyframe.offsets[self.hw:])
+            w_means = torch.cat((w_means_this_frame, w_means_next_frame), dim=0)
+            # w_means = keyframe.T_WC.act(keyframe.offsets)
 
             colors = einops.rearrange(keyframe.img, "(d c) h w -> (h w) c d", d=1)
 
@@ -261,21 +267,27 @@ class GaussianOptimizer:
                     new_rotations=w_rotations[l1_mask]
                 )
             else:
+                valid = torch.cat((self.valid_masks[idx], self.valid_masks[idx + 1]), dim=0)
                 print(f"adding {valid.sum()} points to gaussians")
-                # self.gaussians.add_points(
-                #     new_xyz=w_means[valid],
-                #     new_features_dc=keyframe.SH[valid],
-                #     new_opacities=opacities_new[valid],
-                #     new_scales=scales_new[valid],
-                #     new_rotations=w_rotations[valid]
-                # )
                 self.gaussians.add_points(
-                    new_xyz=w_means,
-                    new_features_dc=keyframe.SH,
-                    new_opacities=opacities_new,
-                    new_scales=scales_new,
-                    new_rotations=w_rotations
+                    new_xyz=w_means[valid],
+                    new_features_dc=keyframe.SH[valid],
+                    new_opacities=opacities_new[valid],
+                    new_scales=scales_new[valid],
+                    new_rotations=w_rotations[valid]
                 )
+                print(f"gaussians.features_dc {self.gaussians._features_dc}")
+                print(f"gaussians._xyz {self.gaussians._xyz}")
+                print(f"gaussians._opacity {self.gaussians._opacity}")
+                print(f"gaussians._scaling {self.gaussians._scaling}")
+                print(f"gaussians._rotation {self.gaussians._rotation}")
+                # self.gaussians.add_points(
+                #     new_xyz=w_means,
+                #     new_features_dc=keyframe.SH,
+                #     new_opacities=opacities_new,
+                #     new_scales=scales_new,
+                #     new_rotations=w_rotations
+                # )
             # self.gaussians.load_ply("/home/curdinst/repos/MASt3R-SLAM/logs/rgbd_dataset_freiburg1_desk_2025-04-17_09-48-43_wa.ply")
             print(f"num_gaussians: {self.gaussians._xyz.shape}")
             # break
@@ -286,14 +298,14 @@ class GaussianOptimizer:
         self.gaussians.init_lr(self.init_lr)
         self.gaussians.training_setup(self.opt_params)
         #         break
-        if num_keyframes > 2:
-            optimisation_window = [num_keyframes - 2, num_keyframes - 1]
-            rest_view_idxs = list(range(num_keyframes - 2))
+        if num_keyframes > 3:
+            optimisation_window = [num_keyframes - 3, num_keyframes - 2]
+            rest_view_idxs = list(range(num_keyframes - 3))
             random.shuffle(rest_view_idxs)
             optimisation_window += rest_view_idxs[:2]
                 
         else:
-            optimisation_window = list(range(num_keyframes))
+            optimisation_window = list(range(num_keyframes-1))
         # optimisation_window = list(range(num_keyframes))
         
         print(f"optimisation_window {optimisation_window}")
@@ -350,11 +362,11 @@ class GaussianOptimizer:
         # Overwrite
         idx = 0
         # for frame_idx in range(num_keyframes):
-        num_valid_list = [valid.sum().item() for valid in self.valid_masks.values()]
+        num_valid_list = [valid.sum().item() for valid in self.valid_masks]
         gauss_indices = [sum(num_valid_list[:i]) for i in range(len(num_valid_list)+1)]
         print(f"num_valid_list {num_valid_list}, \ngauss_indices {gauss_indices}")
-        for frame_idx in range(num_keyframes):
-            valid = self.valid_masks[frame_idx]
+        for frame_idx in range(num_keyframes-1):
+            valid = torch.cat((self.valid_masks[frame_idx], self.valid_masks[frame_idx + 1]), dim=0)
             num_valid = valid.sum()
             # print(f"num gaussians {self.gaussians._xyz.shape}, num_valid {num_valid}")
             # print(f"num_valid: {num_valid} a {self.gaussians._xyz[idx:idx+num_valid].shape}, b {keyframes[frame_idx].X_canon[valid].shape}")
@@ -406,8 +418,8 @@ class GaussianOptimizer:
             # keyframes[frame_idx].opacities[valid] = self.gaussians._opacity[idx:idx+num_valid].clone()
             idx += num_valid
         print(f"updated gaussians of {num_keyframes} keyframes")
-        if num_keyframes == 11:
-            self.gaussians.save_ply(f"/home/curdinst/repos/MASt3R-SLAM/logs/online_opt_{iters}_it.ply")
+        # if num_keyframes == 11:
+        # self.gaussians.save_ply(f"/home/curdinst/repos/MASt3R-SLAM/logs/online_opt_{iters}_it.ply")
 
         #         del render_pkg
         #         break
