@@ -121,7 +121,7 @@ class FrameTracker:
         # print(f"Xkf.mean after scaling {Xkk.mean()}")
 
         # Gaussian parameters
-        (Sff, Rff, SHff, Off, Mff, Skf, Rkf, SHkf, Okf, Mkf) = gaussian_params
+        # (Sff, Rff, SHff, Off, Mff, Skf, Rkf, SHkf, Okf, Mkf) = gaussian_params
         Mkk = T_CkCf.act(Mkf)
         Rkk = quat_mult(T_CkCf.data, Rkf)
         # Rkk = Rkf

@@ -218,12 +218,21 @@ class GaussianOptimizer:
                 device=self.device,
             )
             # print(f"keyframe {keyframe.frame_id} T_WC {keyframe.T_WC.data}")
-            rot = R.from_quat(keyframe.T_WC.data[0,3:7].cpu()).as_matrix()
-            viewpoint.R  = torch.from_numpy(rot).to(device=self.device).T
-            viewpoint.T = -viewpoint.R.float() @ keyframe.T_WC.data[0,:3].float()
+
+            # rot = R.from_quat(keyframe.T_WC.data[0,3:7].cpu()).as_matrix()
+
+            rot = R.from_quat(next_keyframe.T_WC.data[0,3:7].cpu()).as_matrix()
+
+            # viewpoint.R  = torch.from_numpy(rot).to(device=self.device).T
+            # viewpoint.T = -viewpoint.R.float() @ keyframe.T_WC.data[0,:3].float()
+            viewpoint.R = torch.eye(3, device=self.device)
+            viewpoint.T = torch.zeros(3, device=self.device)
+            # viewpoint.R = torch.from_numpy(rot).to(device=self.device)
+            # viewpoint.T = next_keyframe.T_WC.data[0,:3].float()
+            
             # viewpoint.R = torch.from_numpy(rot).to(device=self.device)
             # viewpoint.T = keyframe.T_WC.data[0,:3].float()
-            viewpoint.original_image = keyframe.img.clone().to(device=self.device)
+            viewpoint.original_image = next_keyframe.img.clone().to(device=self.device)
             # print(f"imgshape {keyframe.img.shape}")
             # print(f"viewpoint.image_width {viewpoint.image_width}")
             # print(f"viewpoint.image_height {viewpoint.image_height}")
@@ -238,13 +247,19 @@ class GaussianOptimizer:
             #         )
             # self.valid_masks[idx] = valid
             # valid = np.ones_like(valid, dtype=bool)
-            scales_new = (keyframe.T_WC.data[0,-1] * keyframe.scales)
+            # scales_new = (keyframe.T_WC.data[0,-1] * keyframe.scales)
+            # opacities_new = keyframe.opacities
+            # w_rotations = quat_mult(keyframe.T_WC.data, keyframe.rotations)
+            # # w_means = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets)
+            # w_means_this_frame = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets[:self.hw])
+            # w_means_next_frame = next_keyframe.T_WC.act(next_keyframe.X_canon + keyframe.offsets[self.hw:])
+            # w_means = torch.cat((w_means_this_frame, w_means_next_frame), dim=0)
+
+            w_means = keyframe.offsets
+            scales_new = keyframe.scales
+            w_rotations = keyframe.rotations
             opacities_new = keyframe.opacities
-            w_rotations = quat_mult(keyframe.T_WC.data, keyframe.rotations)
-            # w_means = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets)
-            w_means_this_frame = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets[:self.hw])
-            w_means_next_frame = next_keyframe.T_WC.act(next_keyframe.X_canon + keyframe.offsets[self.hw:])
-            w_means = torch.cat((w_means_this_frame, w_means_next_frame), dim=0)
+
             # w_means = keyframe.T_WC.act(keyframe.offsets)
 
             colors = einops.rearrange(keyframe.img, "(d c) h w -> (h w) c d", d=1)
@@ -270,17 +285,21 @@ class GaussianOptimizer:
                 valid = torch.cat((self.valid_masks[idx], self.valid_masks[idx + 1]), dim=0)
                 print(f"adding {valid.sum()} points to gaussians")
                 self.gaussians.add_points(
-                    new_xyz=w_means[valid],
-                    new_features_dc=keyframe.SH[valid],
-                    new_opacities=opacities_new[valid],
-                    new_scales=scales_new[valid],
-                    new_rotations=w_rotations[valid]
+                    new_xyz=w_means,
+                    new_features_dc=keyframe.SH,
+                    # new_features_dc=torch.cat((
+                    #     einops.rearrange(next_keyframe.img, "(c d) h w -> (h w) c d", d=1),
+                    #     einops.rearrange(keyframe.img, "(c d) h w -> (h w) c d", d=1)
+                    # ), dim=0),
+                    new_opacities=opacities_new,
+                    new_scales=scales_new,
+                    new_rotations=w_rotations,
                 )
-                print(f"gaussians.features_dc {self.gaussians._features_dc}")
-                print(f"gaussians._xyz {self.gaussians._xyz}")
-                print(f"gaussians._opacity {self.gaussians._opacity}")
-                print(f"gaussians._scaling {self.gaussians._scaling}")
-                print(f"gaussians._rotation {self.gaussians._rotation}")
+                # print(f"gaussians.features_dc {self.gaussians._features_dc}")
+                # print(f"gaussians._xyz {self.gaussians._xyz}")
+                # print(f"gaussians._opacity {self.gaussians._opacity}")
+                # print(f"gaussians._scaling {self.gaussians._scaling}")
+                # print(f"gaussians._rotation {self.gaussians._rotation}")
                 # self.gaussians.add_points(
                 #     new_xyz=w_means,
                 #     new_features_dc=keyframe.SH,

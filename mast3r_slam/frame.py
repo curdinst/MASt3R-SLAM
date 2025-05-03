@@ -196,28 +196,28 @@ class Frame:
 
     def update_double_gaussians(self, gaussian_params, Xff, Cff, Ckf, T_CkCf):
         (Sff, Rff, SHff, Off, Mff, Skf, Rkf, SHkf, Okf, Mkf) = gaussian_params
-        Mfk, Mkk = T_CkCf.act(Mff), T_CkCf.act(Mkf)
-        Sfk, Skk = T_CkCf.data[0,-1]*Sff, T_CkCf.data[0,-1]*Skf
-        Rfk, Rkk = quat_mult(T_CkCf.data, Rff), quat_mult(T_CkCf.data, Rkf)
-        # SHfk, SHkk = SHff, SHkf
-        Ofk, Okk = Off, Okf
-        offsets_kk = Mkk - self.X_canon
-        # offsets_fk = Mfk - T_CkCf.act(Xff)
-        offsets_ff = Mff - Xff
-        self.offsets = torch.cat((offsets_kk, offsets_ff), dim=0)
-        self.scales = torch.cat((Skk, Sfk), dim=0)
-        # print(f"scales: {self.scales}")
-        self.rotations = torch.cat((Rkk, Rfk), dim=0)
-        self.opacities = torch.cat((Okk, Ofk), dim=0)
-        self.SH = torch.cat((SHkf, SHff), dim=0)
-
-        # self.offsets = torch.cat((Mff, Mkf), dim=0)
-        # self.scales = torch.cat((Sff, Skf), dim=0)
+        # Mfk, Mkk = T_CkCf.act(Mff), T_CkCf.act(Mkf)
+        # Sfk, Skk = T_CkCf.data[0,-1]*Sff, T_CkCf.data[0,-1]*Skf
+        # Rfk, Rkk = quat_mult(T_CkCf.data, Rff), quat_mult(T_CkCf.data, Rkf)
+        # # SHfk, SHkk = SHff, SHkf
+        # Ofk, Okk = Off, Okf
+        # offsets_kk = Mkk - self.X_canon
+        # # offsets_fk = Mfk - T_CkCf.act(Xff)
+        # offsets_ff = Mff - Xff
+        # self.offsets = torch.cat((offsets_kk, offsets_ff), dim=0)
+        # self.scales = torch.cat((Skk, Sfk), dim=0)
         # # print(f"scales: {self.scales}")
-        # self.rotations = torch.cat((Rff, Rkf), dim=0)
-        # self.opacities = torch.cat((Off, Okf), dim=0)
-        # self.SH = torch.cat((SHff, SHkf), dim=0)
-        # print(f"Double Gaussians: {self.SH.shape}, {self.offsets.shape}, {self.scales.shape}, {self.rotations.shape}, {self.opacities.shape}")
+        # self.rotations = torch.cat((Rkk, Rfk), dim=0)
+        # self.opacities = torch.cat((Okk, Ofk), dim=0)
+        # self.SH = torch.cat((SHkf, SHff), dim=0)
+
+        self.offsets = torch.cat((Mff, Mkf), dim=0)
+        self.scales = torch.cat((Sff, Skf), dim=0)
+        # print(f"scales: {self.scales}")
+        self.rotations = torch.cat((Rff, Rkf), dim=0)
+        self.opacities = torch.cat((Off, Okf), dim=0)
+        self.SH = torch.cat((SHff, SHkf), dim=0)
+        print(f"Double Gaussians: {self.SH.shape}, {self.offsets.shape}, {self.scales.shape}, {self.rotations.shape}, {self.opacities.shape}")
         
 
     def get_average_conf(self):

@@ -90,15 +90,13 @@ def run_gaussian_optimization(cfg, dataset, model, states, keyframes: SharedKeyf
             continue
         len_frames = len(keyframes)
         # print("new frame", new_frame)
-        if len_frames == len_frames_before or len_frames < 2:
+        if len_frames == len_frames_before or len_frames != 2:
             time.sleep(0.01)
             continue
         print("len frames", len_frames)
         len_frames_before = len_frames
-        gaussian_optimizer.optimize(dataset=dataset, keyframes=keyframes, iters=30)
-
-
-    pass
+        gaussian_optimizer.optimize(dataset=dataset, keyframes=keyframes, iters=1)
+    return
 
 def run_backend(cfg, model, states, keyframes, K):
     set_global_config(cfg)
