@@ -1,5 +1,6 @@
 import argparse
-import datetime
+# import datetime
+from datetime import datetime
 import pathlib
 import sys
 import time
@@ -9,6 +10,7 @@ import torch
 import tqdm
 import yaml
 from mast3r_slam.global_opt import FactorGraph
+import os
 
 
 from mast3r_slam.config import load_config, config, set_global_config
@@ -74,7 +76,7 @@ def relocalization(frame, keyframes, factor_graph, retrieval_database):
                 factor_graph.solve_GN_rays()
         return successful_loop_closure
 
-def run_gaussian_optimization(cfg, dataset, model, states, keyframes: SharedKeyframes):
+def run_gaussian_optimization(cfg, dataset, model, states, keyframes: SharedKeyframes, savedir):
     set_global_config(cfg)
     device = keyframes.device
     # factor_graph = FactorGraph(model, keyframes, K, device)
@@ -95,10 +97,12 @@ def run_gaussian_optimization(cfg, dataset, model, states, keyframes: SharedKeyf
             continue
         print("len frames", len_frames)
         len_frames_before = len_frames
-        gaussian_optimizer.optimize(dataset=dataset, keyframes=keyframes, iters=30)
 
-
-    pass
+        num_iterations = config["gaussians"]["num_iterations"]
+        gaussian_optimizer.optimize(dataset=dataset, keyframes=keyframes, iters=num_iterations)
+    
+    gaussian_optimizer.save_results(savedir, config)
+    return
 
 def run_backend(cfg, model, states, keyframes, K):
     set_global_config(cfg)
@@ -177,7 +181,7 @@ if __name__ == "__main__":
     torch.set_grad_enabled(False)
     device = "cuda:0"
     save_frames = False
-    datetime_now = str(datetime.datetime.now()).replace(" ", "_")
+    datetime_now = str(datetime.now()).replace(" ", "_")
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", default="datasets/tum/rgbd_dataset_freiburg1_desk")
@@ -191,6 +195,14 @@ if __name__ == "__main__":
     load_config(args.config)
     print(args.dataset)
     print(config)
+
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    folder_name = timestamp + f"_{config['gaussians']['num_iterations']}_it"
+    path = pathlib.Path(f"logs/")
+    save_dir = path / folder_name
+    os.makedirs(save_dir, exist_ok=True)
+    print(f"Saving to {save_dir}")
+
 
     manager = mp.Manager()
     main2viz = new_queue(manager, args.no_viz)
@@ -244,7 +256,7 @@ if __name__ == "__main__":
 
     # remove the trajectory from the previous run
     if dataset.save_results:
-        save_dir, seq_name = eval.prepare_savedir(args, dataset)
+        _, seq_name = eval.prepare_savedir(args, dataset)
         traj_file = save_dir / f"{seq_name}.txt"
         recon_file = save_dir / f"{seq_name}.ply"
         if traj_file.exists():
@@ -260,7 +272,7 @@ if __name__ == "__main__":
     backend = mp.Process(target=run_backend, args=(config, model, states, keyframes, K))
     backend.start()
 
-    gaussian_optimizer = mp.Process(target=run_gaussian_optimization, args=(config, dataset, model, states, keyframes))
+    gaussian_optimizer = mp.Process(target=run_gaussian_optimization, args=(config, dataset, model, states, keyframes, save_dir))
     gaussian_optimizer.start()
 
     i = 0
@@ -351,8 +363,9 @@ if __name__ == "__main__":
             FPS = i / (time.time() - fps_timer)
             print(f"FPS: {FPS}")
         i += 1
-        if i == 240:
+        if i == config["stop_at_frame"]:
             print(f"Last timestamp: {timestamp}")
+            states.set_mode(Mode.TERMINATED)
             break
 
     date = datetime_now.split(":")[0]
@@ -361,7 +374,7 @@ if __name__ == "__main__":
     datetime_now_new = "_" + date + "-" + min + "-" + sec
 
     if dataset.save_results:
-        save_dir, seq_name = eval.prepare_savedir(args, dataset)
+        # save_dir, seq_name = eval.prepare_savedir(args, dataset)
         seq_name = f"{seq_name + datetime_now_new}"
         eval.save_traj(save_dir, f"{seq_name}.txt", dataset.timestamps, keyframes)
         eval.save_reconstruction(
@@ -385,15 +398,14 @@ if __name__ == "__main__":
     save_gaussian_map = True
     if save_gaussian_map:
         save_dir, seq_name = eval.prepare_savedir(args, dataset)
-        savedir = pathlib.Path(f"logs/")
+        # folder_name = timestamp + f"_{config['gaussians']['num_iterations']}_it"
         file_name = seq_name + datetime_now_new + "_wa.ply"
-        savedir.mkdir(exist_ok=True, parents=True)
-        eval.save_gaussian_map(
-            savedir=savedir,
-            filename=file_name,
-            keyframes=keyframes,
-            c_conf_threshold=last_msg.C_conf_threshold,
-        )
+        # eval.save_gaussian_map(
+        #     savedir=savedir,
+        #     filename=file_name,
+        #     keyframes=keyframes,
+        #     c_conf_threshold=last_msg.C_conf_threshold,
+        # )
 
     if save_frames:
         savedir = pathlib.Path(f"logs/frames/{datetime_now}")
@@ -405,5 +417,6 @@ if __name__ == "__main__":
 
     print("done")
     backend.join()
+    gaussian_optimizer.join()
     if not args.no_viz:
         viz.join()

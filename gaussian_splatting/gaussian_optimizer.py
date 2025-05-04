@@ -26,7 +26,9 @@ from gaussian_splatting.utils.pose_utils import update_pose
 from matplotlib import pyplot as plt
 
 from munch import munchify
-
+import os
+from datetime import datetime
+import shutil
 
 
 
@@ -104,82 +106,7 @@ class GaussianOptimizer:
         self.gaussians.init_lr(self.init_lr)
         self.gaussians.training_setup(self.opt_params)
         self.valid_masks = {}
-
-    def get_loss_tracking_rgb(config, image, opacity, viewpoint):
-        image = (torch.exp(viewpoint.exposure_a)) * image + viewpoint.exposure_b
-        gt_image = viewpoint.original_image.cuda()
-        _, h, w = gt_image.shape
-        mask_shape = (1, h, w)
-        rgb_boundary_threshold = config["gaussians"]["rgb_boundary_threshold"]
-        rgb_pixel_mask = (gt_image.sum(dim=0) > rgb_boundary_threshold).view(*mask_shape)
-        rgb_pixel_mask = rgb_pixel_mask * viewpoint.grad_mask
-        l1 = opacity * torch.abs(image * rgb_pixel_mask - gt_image * rgb_pixel_mask)
-        return l1.mean()
-    
-    def tracking(self, cur_frame_idx, viewpoint: Camera, config, tracking_itr_num=30):
-        prev_idx = cur_frame_idx - 1
-        opt_params = []
-        opt_params.append(
-            {
-                "params": [viewpoint.cam_rot_delta],
-                "lr": config["gaussians"]["lr"]["cam_rot_delta"],
-                "name": "rot_{}".format(viewpoint.uid),
-            }
-        )
-        opt_params.append(
-            {
-                "params": [viewpoint.cam_trans_delta],
-                "lr": config["gaussians"]["lr"]["cam_trans_delta"],
-                "name": "trans_{}".format(viewpoint.uid),
-            }
-        )
-        opt_params.append(
-            {
-                "params": [viewpoint.exposure_a],
-                "lr": 0.01,
-                "name": "exposure_a_{}".format(viewpoint.uid),
-            }
-        )
-        opt_params.append(
-            {
-                "params": [viewpoint.exposure_b],
-                "lr": 0.01,
-                "name": "exposure_b_{}".format(viewpoint.uid),
-            }
-        )
-
-        pose_optimizer = torch.optim.Adam(opt_params)
-        pipeline_params = munchify(config["pipeline_params"])
-
-        for tracking_itr in range(tracking_itr_num):
-            render_pkg = render(
-                viewpoint, self.gaussians, pipeline_params, self.background
-            )
-            image, depth, opacity = (
-                render_pkg["render"],
-                render_pkg["depth"],
-                render_pkg["opacity"],
-            )
-            pose_optimizer.zero_grad()
-            loss_tracking = self.get_loss_tracking_rgb(
-                config, image, opacity, viewpoint
-            )
-            print(f"Tracking loss: {loss_tracking.item()}")
-            loss_tracking.backward()
-
-            with torch.no_grad():
-                pose_optimizer.step()
-                converged = update_pose(viewpoint)
-
-            if converged:
-                print("Converged")
-
-                break
-
-        # self.median_depth = get_median_depth(depth, opacity)
-        plt.imshow(einops.rearrange(viewpoint.original_image.detach().cpu().numpy(), "c h w -> h w c")*0.5 + einops.rearrange(image.detach().cpu().numpy(), "c h w -> h w c")*0.5)
-        plt.show()
-        return render_pkg
+        self.window_size = config["gaussians"]["window_size"]
 
     def optimize(self, dataset, keyframes: SharedKeyframes, iters):
         print(f"run Gaussian Optimizer, number of keyframes: {len(keyframes)}")
@@ -223,7 +150,7 @@ class GaussianOptimizer:
             viewpoint.T = -viewpoint.R.float() @ keyframe.T_WC.data[0,:3].float()
             # viewpoint.R = torch.from_numpy(rot).to(device=self.device)
             # viewpoint.T = keyframe.T_WC.data[0,:3].float()
-            viewpoint.original_image = keyframe.img.clone().to(device=self.device)
+            viewpoint.original_image = keyframe.img.clone().to(device=self.device)/2.0+0.5
             # print(f"imgshape {keyframe.img.shape}")
             # print(f"viewpoint.image_width {viewpoint.image_width}")
             # print(f"viewpoint.image_height {viewpoint.image_height}")
@@ -241,13 +168,10 @@ class GaussianOptimizer:
             scales_new = (keyframe.T_WC.data[0,-1] * keyframe.scales)
             opacities_new = keyframe.opacities
             w_rotations = quat_mult(keyframe.T_WC.data, keyframe.rotations)
-            # w_means = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets)
+            w_means = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets)
             w_means_this_frame = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets[:self.hw])
             w_means_next_frame = next_keyframe.T_WC.act(next_keyframe.X_canon + keyframe.offsets[self.hw:])
             w_means = torch.cat((w_means_this_frame, w_means_next_frame), dim=0)
-            # w_means = keyframe.T_WC.act(keyframe.offsets)
-
-            colors = einops.rearrange(keyframe.img, "(d c) h w -> (h w) c d", d=1)
 
             if False and idx > 1:
                 render_pkg = render(self.viewpoint_stack[idx], self.gaussians, self.pipeline_params, self.background)
@@ -302,7 +226,7 @@ class GaussianOptimizer:
             optimisation_window = [num_keyframes - 3, num_keyframes - 2]
             rest_view_idxs = list(range(num_keyframes - 3))
             random.shuffle(rest_view_idxs)
-            optimisation_window += rest_view_idxs[:2]
+            optimisation_window += rest_view_idxs[:self.window_size-2]
                 
         else:
             optimisation_window = list(range(num_keyframes-1))
@@ -323,7 +247,7 @@ class GaussianOptimizer:
                 # ssim_loss_val = 
                 l1_loss_val = l1_loss(image, self.viewpoint_stack[frame_index].original_image)
                 # loss_mapping = l1_loss_val * 0.75 + 0.25 * (1-ssim_loss_val)
-                loss_mapping += l1_loss_val
+                loss_mapping = l1_loss_val
                 if i == 0 or i == iters - 1:
                     print(f"frame_index {frame_index} iteration {i} SSIM {round(ssim_loss_val.item(), 8)} L1 {round(l1_loss_val.item(), 8)}")
                 # l1_loss_mask = torch.abs(image - self.viewpoint_stack[frame_index].original_image).mean(dim=0)
@@ -332,23 +256,22 @@ class GaussianOptimizer:
                 # print("image", image.shape)
                 # print(f"render results: SSIM {round(ssim_loss_val.item(), 3)} L1 {round(l1_loss_val.item(), 3)}")
 
-                image_rearranged = einops.rearrange(image.cpu().detach().numpy(), "c h w -> h w c")
-                plt.figure()
-                plt.title(f"frame_index {frame_index} iteration {i} SSIM {round(ssim_loss_val.item(), 3)} L1 {round(l1_loss_val.item(), 3)}")
-                plt.axis("off")
-                plt.subplot(1, 2, 1)
-                a,b = np.min(image_rearranged), np.max(image_rearranged)
-                plt.imshow((image_rearranged - a)/(b-a))
-                plt.subplot(1, 2, 2)
-                gt_img_rearranged = einops.rearrange(self.viewpoint_stack[frame_index].original_image.cpu().detach().numpy(), "c h w -> h w c")
-                a,b = np.min(gt_img_rearranged), np.max(gt_img_rearranged)
-                plt.imshow((gt_img_rearranged- a)/(b-a) )
-
-                path = "/home/curdinst/repos/MASt3R-SLAM/logs/"
-                
-                plt.savefig(path + f"render_{frame_index}.png")
-                plt.close()
-                print(f"saved figures to {path}render_{frame_index}.png")
+                save_plot = False
+                if save_plot:
+                    image_rearranged = einops.rearrange(image.cpu().detach().numpy(), "c h w -> h w c")
+                    plt.figure()
+                    plt.title(f"frame_index {frame_index} iteration {i} SSIM {round(ssim_loss_val.item(), 3)} L1 {round(l1_loss_val.item(), 3)}")
+                    plt.axis("off")
+                    plt.subplot(1, 2, 1)
+                    a,b = np.min(image_rearranged), np.max(image_rearranged)
+                    plt.imshow((image_rearranged - a)/(b-a))
+                    plt.subplot(1, 2, 2)
+                    gt_img_rearranged = einops.rearrange(self.viewpoint_stack[frame_index].original_image.cpu().detach().numpy(), "c h w -> h w c")
+                    a,b = np.min(gt_img_rearranged), np.max(gt_img_rearranged)
+                    plt.imshow((gt_img_rearranged- a)/(b-a) )
+                    path = "/home/curdinst/repos/MASt3R-SLAM/logs/"
+                    plt.savefig(path + f"render_{frame_index}.png")
+                    plt.close()
                 
                 
                 loss_mapping.backward()
@@ -418,11 +341,19 @@ class GaussianOptimizer:
             # keyframes[frame_idx].opacities[valid] = self.gaussians._opacity[idx:idx+num_valid].clone()
             idx += num_valid
         print(f"updated gaussians of {num_keyframes} keyframes")
-        # if num_keyframes == 11:
-        # self.gaussians.save_ply(f"/home/curdinst/repos/MASt3R-SLAM/logs/online_opt_{iters}_it.ply")
+        if num_keyframes == 11:
+            self.gaussians.save_ply(f"/home/curdinst/repos/MASt3R-SLAM/logs/online_opt_{iters}_it.ply")
 
         #         del render_pkg
         #         break
         #     break
                 # self._save_checkpoint()
+        return
+    
+    def save_results(self, path, config):
+        # Create a folder with the current datetime
+        output_folder = path
+        gaussinas_file = os.path.join(output_folder, "gaussians.ply")
+        self.gaussians.save_ply(gaussinas_file)
+        shutil.copyfile("/home/curdinst/repos/MASt3R-SLAM/config/base.yaml", os.path.join(output_folder, "base.yaml"))
         return
