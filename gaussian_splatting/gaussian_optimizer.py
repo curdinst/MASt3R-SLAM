@@ -168,7 +168,6 @@ class GaussianOptimizer:
             scales_new = (keyframe.T_WC.data[0,-1] * keyframe.scales)
             opacities_new = keyframe.opacities
             w_rotations = quat_mult(keyframe.T_WC.data, keyframe.rotations)
-            w_means = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets)
             w_means_this_frame = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets[:self.hw])
             w_means_next_frame = next_keyframe.T_WC.act(next_keyframe.X_canon + keyframe.offsets[self.hw:])
             w_means = torch.cat((w_means_this_frame, w_means_next_frame), dim=0)
@@ -341,8 +340,8 @@ class GaussianOptimizer:
             # keyframes[frame_idx].opacities[valid] = self.gaussians._opacity[idx:idx+num_valid].clone()
             idx += num_valid
         print(f"updated gaussians of {num_keyframes} keyframes")
-        if num_keyframes == 11:
-            self.gaussians.save_ply(f"/home/curdinst/repos/MASt3R-SLAM/logs/online_opt_{iters}_it.ply")
+        # if num_keyframes == 11:
+        #     self.gaussians.save_ply(f"/home/curdinst/repos/MASt3R-SLAM/logs/online_opt_{iters}_it.ply")
 
         #         del render_pkg
         #         break
