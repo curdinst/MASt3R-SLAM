@@ -1,10 +1,11 @@
 use_calib: False
 
-stop_at_frame: 240
+stop_at_frame: 120
 gaussians:
+  double_gaussians: True
   lr_init: 0.05
-  num_iterations: 1
-  window_size: 11 # 2 newest frames are subtracted -> window_size = 2 newest frames + N random frames
+  num_iterations: 0
+  window_size: 4 # 2 newest frames are subtracted -> window_size = 2 newest frames + N random frames
   Calibration:
     fx: 413.8451264 # 517.306408
     fy: 413.175372 # 516.469215
