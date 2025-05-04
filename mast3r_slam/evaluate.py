@@ -137,7 +137,7 @@ def save_gaussian_map(savedir, filename, keyframes, c_conf_threshold):
         # means.append(means_new)
         # sh.append(sh_new)
         # opacities.append(opacities_new)
-        num_gaussians += rotations_new.shape[0]
+        # num_gaussians += rotations_new.shape[0]
 
         
     if len(sh) < 2:
