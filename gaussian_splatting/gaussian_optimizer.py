@@ -109,7 +109,7 @@ class GaussianOptimizer:
         self.valid_masks = {}
         self.window_size = config["gaussians"]["window_size"]
 
-    def optimize(self, dataset, keyframes: SharedKeyframes, iters):
+    def optimize(self, keyframes: SharedKeyframes, iters, save_results=False, path=None):
         print(f"run Gaussian Optimizer, number of keyframes: {len(keyframes)}")
         # if len(keyframes) > 2: return
         # del self.viewpoint_stack
@@ -206,12 +206,11 @@ class GaussianOptimizer:
         self.gaussians.init_lr(self.init_lr)
         self.gaussians.training_setup(self.opt_params)
         #         break
-        if num_keyframes > 2:
+        if num_keyframes > 2 and not save_results:
             optimisation_window = [num_keyframes - 2, num_keyframes - 1]
             rest_view_idxs = list(range(num_keyframes - 2))
             random.shuffle(rest_view_idxs)
             optimisation_window += rest_view_idxs[:self.window_size-2]
-                
         else:
             optimisation_window = list(range(num_keyframes))
         # optimisation_window = list(range(num_keyframes))
@@ -240,7 +239,7 @@ class GaussianOptimizer:
                 # print("image", image.shape)
                 # print(f"render results: SSIM {round(ssim_loss_val.item(), 3)} L1 {round(l1_loss_val.item(), 3)}")
 
-                save_plot = True
+                save_plot = save_results
                 if save_plot:
                     image_rearranged = einops.rearrange(image.cpu().detach().numpy(), "c h w -> h w c")
                     plt.figure()
@@ -253,17 +252,16 @@ class GaussianOptimizer:
                     gt_img_rearranged = einops.rearrange(self.viewpoint_stack[frame_index].original_image.cpu().detach().numpy(), "c h w -> h w c")
                     a,b = np.min(gt_img_rearranged), np.max(gt_img_rearranged)
                     plt.imshow((gt_img_rearranged- a)/(b-a) )
-                    path = "/home/curdinst/repos/MASt3R-SLAM/logs/"
                     plt.savefig(path + f"render_{frame_index}.png")
                     plt.close()
                 
-                
-                loss_mapping.backward()
-                with torch.no_grad():
-                    self.gaussians.optimizer.step()
-                    self.gaussians.optimizer.zero_grad(set_to_none=True)
-                    self.gaussians.update_learning_rate(idx)
-                    loss_mapping = 0
+                if not save_results:
+                    loss_mapping.backward()
+                    with torch.no_grad():
+                        self.gaussians.optimizer.step()
+                        self.gaussians.optimizer.zero_grad(set_to_none=True)
+                        self.gaussians.update_learning_rate(idx)
+                        loss_mapping = 0
         
 
         # Overwrite
@@ -334,7 +332,8 @@ class GaussianOptimizer:
                 # self._save_checkpoint()
         return
     
-    def save_results(self, path, config):
+    def save_results(self, path, keyframes):
+        self.optimize(keyframes=keyframes, iters=1, save_results=True, path=path)
         # Create a folder with the current datetime
         output_folder = path
         gaussinas_file = os.path.join(output_folder, "gaussians.ply")

@@ -101,7 +101,7 @@ def run_gaussian_optimization(cfg, dataset, model, states, keyframes: SharedKeyf
         num_iterations = config["gaussians"]["num_iterations"]
         gaussian_optimizer.optimize(dataset=dataset, keyframes=keyframes, iters=num_iterations)
     
-    gaussian_optimizer.save_results(savedir, config)
+    gaussian_optimizer.save_results(savedir, keyframes)
     return
 
 def run_backend(cfg, model, states, keyframes, K):
