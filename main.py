@@ -184,18 +184,18 @@ if __name__ == "__main__":
     datetime_now = str(datetime.now()).replace(" ", "_")
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", default="datasets/tum/rgbd_dataset_freiburg1_desk")
+    # parser.add_argument("--dataset", default="datasets/tum/rgbd_dataset_freiburg1_desk")
     parser.add_argument("--config", default="config/base.yaml")
     parser.add_argument("--save-as", default="default")
-    parser.add_argument("--no-viz", action="store_true")
+    parser.add_argument("--no-viz", default=False, action="store_true")
     parser.add_argument("--calib", default="")
 
     args = parser.parse_args()
 
     load_config(args.config)
-    print(args.dataset)
+    # print(args.dataset)
     print(config)
-
+    
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
     folder_name = timestamp + f"_{config['gaussians']['num_iterations']}_it"
     path = pathlib.Path(f"logs/")
@@ -207,8 +207,8 @@ if __name__ == "__main__":
     manager = mp.Manager()
     main2viz = new_queue(manager, args.no_viz)
     viz2main = new_queue(manager, args.no_viz)
-
-    dataset = load_dataset(args.dataset)
+    print(config["used_dataset"])
+    dataset = load_dataset(config["used_dataset"])
     dataset.subsample(config["dataset"]["subsample"])
     h, w = dataset.get_img_shape()[0]
     print("img shape", h, w)
@@ -363,7 +363,8 @@ if __name__ == "__main__":
             FPS = i / (time.time() - fps_timer)
             print(f"FPS: {FPS}")
         i += 1
-        if i == config["stop_at_frame"]:
+        # if i == config["stop_at_frame"]:
+        if len(keyframes) > config["stop_at_keyframe"]:
             print(f"Last timestamp: {timestamp}")
             states.set_mode(Mode.TERMINATED)
             break
@@ -376,10 +377,10 @@ if __name__ == "__main__":
     if dataset.save_results:
         # save_dir, seq_name = eval.prepare_savedir(args, dataset)
         seq_name = f"{seq_name + datetime_now_new}"
-        eval.save_traj(save_dir, f"{seq_name}.txt", dataset.timestamps, keyframes)
+        eval.save_traj(save_dir, f"keyframe_poses.txt", dataset.timestamps, keyframes)
         eval.save_reconstruction(
             save_dir,
-            f"{seq_name}.ply",
+            f"pointcloud.ply",
             keyframes,
             last_msg.C_conf_threshold,
         )
@@ -391,7 +392,7 @@ if __name__ == "__main__":
     if save_frame_poses:
         eval.save_frame_poses(
             save_dir,
-            f"{seq_name}_all_poses.txt",
+            f"all_poses.txt",
             dataset.timestamps,
             tracker.poses,
         )
@@ -416,7 +417,7 @@ if __name__ == "__main__":
             cv2.imwrite(f"{savedir}/{i}.png", frame)
 
     print("done")
-    backend.join()
+    # backend.join()
     gaussian_optimizer.join()
     if not args.no_viz:
         viz.join()

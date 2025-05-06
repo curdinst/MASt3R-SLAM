@@ -66,7 +66,9 @@ class GaussianOptimizer:
         self.background = torch.tensor([0, 0, 0], dtype=torch.float32, device=device)
         
         print(f"intrinsics: {config['gaussians']['Calibration']}")
-        intrinsics = munchify(config["gaussians"]["Calibration"])
+        dataset = "replica" if "replica" in config["used_dataset"] else "tum"
+        intrinsics = munchify(config["gaussians"]["Calibration"][dataset])
+
         self.projection_matrix = getProjectionMatrix2(
             znear=0.01,
             zfar=100.0,
@@ -150,8 +152,8 @@ class GaussianOptimizer:
             # print(f"imgshape {keyframe.img.shape}")
             # print(f"viewpoint.image_width {viewpoint.image_width}")
             # print(f"viewpoint.image_height {viewpoint.image_height}")
-            viewpoint.image_width = 512
-            viewpoint.image_height = 384
+            viewpoint.image_width = self.intrinsics.width
+            viewpoint.image_height = self.intrinsics.height
             self.viewpoint_stack[idx] = viewpoint
             # if i == len(keyframes):
             # print("add points to gaussians")
@@ -238,7 +240,7 @@ class GaussianOptimizer:
                 # print("image", image.shape)
                 # print(f"render results: SSIM {round(ssim_loss_val.item(), 3)} L1 {round(l1_loss_val.item(), 3)}")
 
-                save_plot = False
+                save_plot = True
                 if save_plot:
                     image_rearranged = einops.rearrange(image.cpu().detach().numpy(), "c h w -> h w c")
                     plt.figure()

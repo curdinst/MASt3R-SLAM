@@ -88,6 +88,22 @@ class TUMDataset(MonocularDataset):
         W, H = 640, 480
         self.camera_intrinsics = Intrinsics.from_calib(self.img_size, W, H, calib)
 
+class ReplicaDataset(MonocularDataset):
+    def __init__(self, dataset_path):
+        super().__init__()
+        self.dataset_path = pathlib.Path(dataset_path)
+        # rgb_list = self.dataset_path / "rgb.txt"
+        # tstamp_rgb = np.loadtxt(rgb_list, delimiter=" ", dtype=np.unicode_, skiprows=0)
+
+        frame_ids = list(range(2000))
+        tstamp_rgb = np.array([[f"{i:06d}", f"frame{i:06d}.jpg"] for i in frame_ids])
+        self.rgb_files = [self.dataset_path/ "results" / f for f in tstamp_rgb[:, 1]]
+        print(f"replica dataset path: {self.rgb_files[0]}")
+        self.timestamps = tstamp_rgb[:, 1]
+
+        calib = np.array([600.0, 600.0, 599.5, 339.5])
+        W, H = 1200, 680
+        self.camera_intrinsics = Intrinsics.from_calib(self.img_size, W, H, calib)
 
 class EurocDataset(MonocularDataset):
     def __init__(self, dataset_path):
@@ -331,6 +347,8 @@ def load_dataset(dataset_path):
         return RealsenseDataset()
     if "webcam" in split_dataset_type:
         return Webcam()
+    if "replica" in split_dataset_type:
+        return ReplicaDataset(dataset_path)
 
     ext = split_dataset_type[-1].split(".")[-1]
     if ext in ["mp4", "avi", "MOV", "mov"]:
