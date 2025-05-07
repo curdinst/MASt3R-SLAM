@@ -350,7 +350,7 @@ class GaussianModel:
         scale = self._scaling.detach().cpu().numpy()
         rotation = self._rotation.detach().cpu().numpy()
 
-        print("saving scales: ", scale)
+        # print("saving scales: ", scale)
         dtype_full = [
             (attribute, "f4") for attribute in self.construct_list_of_attributes()
         ]

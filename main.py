@@ -197,7 +197,7 @@ if __name__ == "__main__":
     print(config)
     
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
-    folder_name = timestamp + f"_{config['gaussians']['num_iterations']}_it"
+    folder_name = timestamp + f"_{config['gaussians']['num_iterations']}_it_window{config['gaussians']['window_size']}"
     path = pathlib.Path(f"logs/")
     save_dir = path / folder_name
     os.makedirs(save_dir, exist_ok=True)
@@ -225,7 +225,7 @@ if __name__ == "__main__":
             intrinsics["calibration"],
         )
 
-    keyframes = SharedKeyframes(manager, h, w, buffer=30)
+    keyframes = SharedKeyframes(manager, h, w, buffer=22)
     states = SharedStates(manager, h, w)
 
     if not args.no_viz:

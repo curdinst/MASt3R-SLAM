@@ -6,7 +6,7 @@ stop_at_keyframe: 10
 gaussians:
   lr_init: 0.05
   num_iterations: 30
-  window_size: 4 # 2 newest frames are subtracted -> window_size = 2 newest frames + N random frames
+  window_size: 15 # 2 newest frames are subtracted -> window_size = 2 newest frames + N random frames
   Calibration:
     tum:
       fx: 413.8451264 # 517.306408
