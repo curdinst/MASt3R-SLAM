@@ -108,12 +108,14 @@ class GaussianOptimizer:
         self.gaussians.training_setup(self.opt_params)
         self.valid_masks = {}
         self.window_size = config["gaussians"]["window_size"]
+        self.keyframe_TFs = {}
 
     def optimize(self, keyframes: SharedKeyframes, iters, save_results=False, path=None):
         print(f"run Gaussian Optimizer, number of keyframes: {len(keyframes)}")
         # if len(keyframes) > 2: return
         # del self.viewpoint_stack
         self.viewpoint_stack = {}
+        self.keyframe_TFs = {}
         # del self.gaussians
         self.gaussians = GaussianModel(sh_degree=0)
         self.valid_masks = {}
@@ -155,6 +157,7 @@ class GaussianOptimizer:
             viewpoint.image_width = self.intrinsics.width
             viewpoint.image_height = self.intrinsics.height
             self.viewpoint_stack[idx] = viewpoint
+            self.keyframe_TFs[idx] = keyframe.T_WC
             # if i == len(keyframes):
             # print("add points to gaussians")
             c_conf_threshold = 1.5
@@ -214,7 +217,7 @@ class GaussianOptimizer:
         else:
             optimisation_window = list(range(num_keyframes))
         # optimisation_window = list(range(num_keyframes))
-        
+        self.rendering_vals = {}
         print(f"optimisation_window {optimisation_window}")
         for i in range(iters):
             self.iteration_count += 1
@@ -240,6 +243,8 @@ class GaussianOptimizer:
                 # print(f"render results: SSIM {round(ssim_loss_val.item(), 3)} L1 {round(l1_loss_val.item(), 3)}")
 
                 save_plot = save_results
+                self.rendering_vals[f"ssim_{frame_index}"] = ssim_loss_val.item()
+                self.rendering_vals[f"l1_{frame_index}"] = l1_loss_val.item()
                 if save_plot:
                     image_rearranged = einops.rearrange(image.cpu().detach().numpy(), "c h w -> h w c")
                     plt.figure()
@@ -252,7 +257,7 @@ class GaussianOptimizer:
                     gt_img_rearranged = einops.rearrange(self.viewpoint_stack[frame_index].original_image.cpu().detach().numpy(), "c h w -> h w c")
                     a,b = np.min(gt_img_rearranged), np.max(gt_img_rearranged)
                     plt.imshow((gt_img_rearranged- a)/(b-a) )
-                    plt.savefig(path + f"render_{frame_index}.png")
+                    plt.savefig(path / f"render_{frame_index}.png")
                     plt.close()
                 
                 if not save_results:
@@ -262,7 +267,9 @@ class GaussianOptimizer:
                         self.gaussians.optimizer.zero_grad(set_to_none=True)
                         self.gaussians.update_learning_rate(idx)
                         loss_mapping = 0
-        
+
+        if save_results:
+            self.draw_cameras()
 
         # Overwrite
         idx = 0
@@ -332,10 +339,70 @@ class GaussianOptimizer:
                 # self._save_checkpoint()
         return
     
+    def draw_cameras(self):
+        # Add red gaussians forming a camera frustum for each camera
+        frustum_color = torch.tensor([50.0, 0.0, 0.0], device=self.device)  # Red color
+        frustum_opacity = torch.tensor([1.0], device=self.device)  # Fully opaque
+        frustum_scale = torch.tensor([0.002], device=self.device)  # Small scale for visualization
+
+        # Define frustum vertices in camera space
+        # tan_fovx = torch.tan(torch.deg2rad(torch.tensor(self.fovx / 2)))
+        # tan_fovy = torch.tan(torch.deg2rad(torch.tensor(self.fovy / 2)))
+        rotation = torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device)  # Identity rotation
+        dist = 0.15
+        left = dist * 0.5 # tan_fovx * 30
+        top = dist * 0.5 # tan_fovy * 30
+        # print(f"dist {dist}, left {left}, top {top}")
+        origin = torch.tensor([0, 0, 0], dtype=torch.double, device=self.device)
+        c1 = torch.tensor([left, top, dist], dtype=torch.double, device=self.device)
+        c2 = torch.tensor([left, -top, dist], dtype=torch.double, device=self.device)
+        c3 = torch.tensor([-left, -top, dist], dtype=torch.double, device=self.device)
+        c4 = torch.tensor([-left, top, dist], dtype=torch.double, device=self.device)
+        steps = 40
+        t = torch.linspace(0, 1, steps, dtype=torch.double, device=self.device)
+        frustum_vertices = torch.cat((
+            (1 - t).unsqueeze(1) * origin + t.unsqueeze(1) * c1,
+            (1 - t).unsqueeze(1) * origin + t.unsqueeze(1) * c2,
+            (1 - t).unsqueeze(1) * origin + t.unsqueeze(1) * c3,
+            (1 - t).unsqueeze(1) * origin + t.unsqueeze(1) * c4,
+            (1 - t).unsqueeze(1) * c1 + t.unsqueeze(1) * c2,
+            (1 - t).unsqueeze(1) * c2 + t.unsqueeze(1) * c3,
+            (1 - t).unsqueeze(1) * c3 + t.unsqueeze(1) * c4,
+            (1 - t).unsqueeze(1) * c4 + t.unsqueeze(1) * c1
+        ))
+
+        for (key, viewpoint) in self.viewpoint_stack.items():
+            # Transform frustum vertices to world space
+            frustum_vertices_world = self.keyframe_TFs[key].act(frustum_vertices.type(torch.float))
+
+            # Add frustum vertices as gaussians
+            self.gaussians.add_points(
+                new_xyz=frustum_vertices_world,
+                new_features_dc=frustum_color.repeat(frustum_vertices_world.shape[0], 1)[..., None],
+                new_opacities=frustum_opacity.repeat(frustum_vertices_world.shape[0])[..., None],
+                new_scales=frustum_scale.repeat(frustum_vertices_world.shape[0], 3),
+                new_rotations=rotation.repeat(frustum_vertices_world.shape[0], 1)
+            )
+
     def save_results(self, path, keyframes):
         self.optimize(keyframes=keyframes, iters=1, save_results=True, path=path)
-        # Create a folder with the current datetime
+        total_ssim, total_l1, num = 0, 0, 0
+        for (key, val) in self.rendering_vals.items():
+            if "ssim" in key:
+                total_ssim += val
+                num += 1
+            if "l1" in key:
+                total_l1 += val
+        self.rendering_vals["ssim mean"] = total_ssim / num
+        self.rendering_vals["l1 mean"] = total_l1 / num
+
+        # Write self.rendering_vals to a text file
         output_folder = path
+        rendering_results_file = os.path.join(output_folder, "rendering_results.txt")
+        with open(rendering_results_file, "w") as f:
+            for key, value in self.rendering_vals.items():
+                f.write(f"{key}: {value}\n")
+        # Create a folder with the current datetime
         gaussinas_file = os.path.join(output_folder, "gaussians.ply")
         self.gaussians.save_ply(gaussinas_file)
         shutil.copyfile("/home/curdinst/repos/MASt3R-SLAM/config/base.yaml", os.path.join(output_folder, "base.yaml"))

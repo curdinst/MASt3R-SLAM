@@ -704,7 +704,6 @@ class GaussianModel:
     ):
         # print(f"max sh degree: {self.max_sh_degree}")
         # self._xyz = torch.cat((self._xyz, new_xyz), dim=0)
-        new_features_dc_rearranged = einops.rearrange(new_features_dc, "n c f -> n (c f)")[:, None, :]
         # features_rest = torch.zeros(
         #     new_features_dc_rearranged.shape[0], 0
         # ).cuda()
@@ -724,7 +723,12 @@ class GaussianModel:
         print()
 
         new_scales = torch.log(new_scales)
-
+        # print(f"new_xyz: {new_xyz.shape}")
+        # print(f"new_features_dc: {new_features_dc.shape}")
+        # print(f"new_features_rest: {features_extra.shape}")
+        # print(f"new_opacities: {new_opacities.shape}")
+        # print(f"new_scales: {new_scales.shape}")
+        # print(f"new_rotations: {new_rotations.shape}")
 
         self._xyz = nn.Parameter(
             torch.cat((self._xyz, torch.tensor(new_xyz, dtype=torch.float, device="cuda")), dim=0).requires_grad_(True)

@@ -99,7 +99,7 @@ def run_gaussian_optimization(cfg, dataset, model, states, keyframes: SharedKeyf
         len_frames_before = len_frames
 
         num_iterations = config["gaussians"]["num_iterations"]
-        gaussian_optimizer.optimize(dataset=dataset, keyframes=keyframes, iters=num_iterations)
+        gaussian_optimizer.optimize(keyframes=keyframes, iters=num_iterations)
     
     gaussian_optimizer.save_results(savedir, keyframes)
     return
