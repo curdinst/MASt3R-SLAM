@@ -197,7 +197,8 @@ if __name__ == "__main__":
     print(config)
     
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
-    folder_name = timestamp + f"_{config['gaussians']['num_iterations']}_it_window{config['gaussians']['window_size']}"
+    dataset_name = config["used_dataset"].split("/")[1] + "_" + config["used_dataset"].split("/")[-1]
+    folder_name = timestamp + f"_{dataset_name}_{config['gaussians']['num_iterations']}_it_window{config['gaussians']['window_size']}"
     path = pathlib.Path(f"logs/")
     save_dir = path / folder_name
     os.makedirs(save_dir, exist_ok=True)

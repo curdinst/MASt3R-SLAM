@@ -209,7 +209,9 @@ class GaussianOptimizer:
         self.gaussians.init_lr(self.init_lr)
         self.gaussians.training_setup(self.opt_params)
         #         break
-        if num_keyframes > 2 and not save_results:
+        if self.window_size == 1 and not save_results:
+            optimisation_window = [num_keyframes - 1]
+        elif num_keyframes > 2 and not save_results:
             optimisation_window = [num_keyframes - 2, num_keyframes - 1]
             rest_view_idxs = list(range(num_keyframes - 2))
             random.shuffle(rest_view_idxs)
