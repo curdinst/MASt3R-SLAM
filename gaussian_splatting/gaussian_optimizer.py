@@ -22,9 +22,10 @@ from mast3r_slam.frame import Mode, SharedKeyframes, SharedStates, create_frame
 from mast3r_slam.geometry import constrain_points_to_ray, quat_mult
 from gaussian_splatting.utils.graphics_utils import focal2fov
 from gaussian_splatting.utils.pose_utils import update_pose
+from gaussian_splatting.utils.slam_utils import get_loss_tracking_rgb, get_median_depth
 
 from matplotlib import pyplot as plt
-
+import pickle
 from munch import munchify
 import os
 from datetime import datetime
@@ -64,6 +65,7 @@ class GaussianOptimizer:
         self.initialized = not self.monocular
         self.keyframe_optimizers = None
         self.background = torch.tensor([0, 0, 0], dtype=torch.float32, device=device)
+        self.tracking_itr_num = config["gaussians"]["tracking_itr_num"]
         
         print(f"intrinsics: {config['gaussians']['Calibration']}")
         dataset = "replica" if "replica" in config["used_dataset"] else "tum"
@@ -84,24 +86,7 @@ class GaussianOptimizer:
         self.intrinsics = intrinsics
         self.projection_matrix = self.projection_matrix.to(device=device)
         self.pipeline_params = munchify(config["gaussians"]["pipeline_params"])
-        opt_params = {
-            "iterations": 30000,
-            "position_lr_init": 0.0016,
-            "position_lr_final": 0.0000016,
-            "position_lr_delay_mult": 0.01,
-            "position_lr_max_steps": 30000,
-            "feature_lr": 0.0025,
-            "opacity_lr": 0.05,
-            "scaling_lr": 0.001,
-            "rotation_lr": 0.001,
-            "percent_dense": 0.01,
-            "lambda_dssim": 0.2,
-            "densification_interval": 100,
-            "opacity_reset_interval": 3000,
-            "densify_from_iter": 500,
-            "densify_until_iter": 15000,
-            "densify_grad_threshold": 0.0002,
-        }
+        opt_params = config["gaussians"]["map_optimisation_params"]
         self.opt_params = munchify(opt_params)
         self.init_lr = 0.05
         self.gaussians.init_lr(self.init_lr)
@@ -109,6 +94,7 @@ class GaussianOptimizer:
         self.valid_masks = {}
         self.window_size = config["gaussians"]["window_size"]
         self.keyframe_TFs = {}
+        self.optimized_poses = {}
 
     def optimize(self, keyframes: SharedKeyframes, iters, save_results=False, path=None):
         print(f"run Gaussian Optimizer, number of keyframes: {len(keyframes)}")
@@ -332,6 +318,12 @@ class GaussianOptimizer:
             # keyframes[frame_idx].opacities[valid] = self.gaussians._opacity[idx:idx+num_valid].clone()
             idx += num_valid
         print(f"updated gaussians of {num_keyframes} keyframes")
+
+        self.tracking(num_keyframes-1, self.viewpoint_stack[num_keyframes-1], tracking_itr_num=self.tracking_itr_num)
+        T_CW_opt = torch.eye(4, device=self.device)
+        T_CW_opt[:3, :3] = self.viewpoint_stack[num_keyframes-1].R
+        T_CW_opt[:3, 3] = self.viewpoint_stack[num_keyframes-1].T
+        self.optimized_poses[num_keyframes-1] = T_CW_opt.clone()
         # if num_keyframes == 11:
         #     self.gaussians.save_ply(f"/home/curdinst/repos/MASt3R-SLAM/logs/online_opt_{iters}_it.ply")
 
@@ -341,6 +333,70 @@ class GaussianOptimizer:
                 # self._save_checkpoint()
         return
     
+    def tracking(self, cur_frame_idx, viewpoint, tracking_itr_num=100):
+        print(f"Initial pose for frame {cur_frame_idx}: T: {viewpoint.T}, R: {viewpoint.R}")
+
+        viewpoint.compute_grad_mask(self.config)
+        opt_params = []
+        opt_params.append(
+            {
+                "params": [viewpoint.cam_rot_delta],
+                "lr": self.config["gaussians"]["tracking_lr"]["cam_rot_delta"],
+                "name": "rot_{}".format(viewpoint.uid),
+            }
+        )
+        opt_params.append(
+            {
+                "params": [viewpoint.cam_trans_delta],
+                "lr": self.config["gaussians"]["tracking_lr"]["cam_trans_delta"],
+                "name": "trans_{}".format(viewpoint.uid),
+            }
+        )
+        opt_params.append(
+            {
+                "params": [viewpoint.exposure_a],
+                "lr": 0.01,
+                "name": "exposure_a_{}".format(viewpoint.uid),
+            }
+        )
+        opt_params.append(
+            {
+                "params": [viewpoint.exposure_b],
+                "lr": 0.01,
+                "name": "exposure_b_{}".format(viewpoint.uid),
+            }
+        )
+
+        pose_optimizer = torch.optim.Adam(opt_params)
+        for tracking_itr in range(tracking_itr_num):
+            render_pkg = render(
+                viewpoint, self.gaussians, self.pipeline_params, self.background
+            )
+            image, depth, opacity = (
+                render_pkg["render"],
+                render_pkg["depth"],
+                render_pkg["opacity"],
+            )
+            pose_optimizer.zero_grad()
+            loss_tracking = get_loss_tracking_rgb(
+                self.config, image, depth, opacity, viewpoint
+            )
+            if tracking_itr == 0 or tracking_itr == tracking_itr_num-1: print(f"tracking iteration {tracking_itr} loss_tracking {round(loss_tracking.item(), 5)}")
+            loss_tracking.backward()
+
+            with torch.no_grad():
+                pose_optimizer.step()
+                converged = update_pose(viewpoint)
+
+            if converged:
+                print(f"tracking converged at iteration {tracking_itr} with loss_tracking {round(loss_tracking.item(), 5)}")
+                break
+        print(f"optimized pose for frame {cur_frame_idx}: T: {viewpoint.T}, R: {viewpoint.R}")
+        # self.median_depth = get_median_depth(depth, opacity)
+        return render_pkg
+
+
+
     def draw_cameras(self):
         # Add red gaussians forming a camera frustum for each camera
         frustum_color = torch.tensor([50.0, 0.0, 0.0], device=self.device)  # Red color
@@ -405,6 +461,9 @@ class GaussianOptimizer:
             for key, value in self.rendering_vals.items():
                 f.write(f"{key}: {value}\n")
         # Create a folder with the current datetime
+        optimized_poses_file = os.path.join(output_folder, "optimized_poses.pkl")
+        with open(optimized_poses_file, "wb") as f:
+            pickle.dump(self.optimized_poses, f)
         gaussinas_file = os.path.join(output_folder, "gaussians.ply")
         self.gaussians.save_ply(gaussinas_file)
         shutil.copyfile("/home/curdinst/repos/MASt3R-SLAM/config/base.yaml", os.path.join(output_folder, "base.yaml"))

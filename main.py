@@ -92,7 +92,7 @@ def run_gaussian_optimization(cfg, dataset, model, states, keyframes: SharedKeyf
             continue
         len_frames = len(keyframes)
         # print("new frame", new_frame)
-        if len_frames == len_frames_before or len_frames < 2:
+        if len_frames == len_frames_before or len_frames < 1:
             time.sleep(0.01)
             continue
         print("len frames", len_frames)

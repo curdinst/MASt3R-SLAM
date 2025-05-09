@@ -112,7 +112,7 @@ class Camera(nn.Module):
         self.T = t.to(device=self.device)
 
     def compute_grad_mask(self, config):
-        edge_threshold = config["Training"]["edge_threshold"]
+        edge_threshold = config["gaussians"]["edge_threshold"]
 
         gray_img = self.original_image.mean(dim=0, keepdim=True)
         gray_grad_v, gray_grad_h = image_gradient(gray_img)
@@ -121,7 +121,7 @@ class Camera(nn.Module):
         gray_grad_h = gray_grad_h * mask_h
         img_grad_intensity = torch.sqrt(gray_grad_v**2 + gray_grad_h**2)
 
-        if config["Dataset"]["type"] == "replica":
+        if "replica" in config["used_dataset"]:
             row, col = 32, 32
             multiplier = edge_threshold
             _, h, w = self.original_image.shape

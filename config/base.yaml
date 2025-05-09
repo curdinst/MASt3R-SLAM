@@ -1,12 +1,16 @@
 use_calib: True
 used_dataset: "datasets/replica/office2" # datasets/tum/rgbd_dataset_freiburg1_desk
+# used_dataset: "datasets/replica/office1"
+# used_dataset: "datasets/replica/office3"
+# used_dataset: "datasets/replica/room0"
 
 # stop_at_frame: 240
 stop_at_keyframe: 10
 gaussians:
   lr_init: 0.05
   num_iterations: 30
-  window_size: 1 # 2 newest frames are subtracted -> window_size = 2 newest frames + N random frames
+  window_size: 2 # 2 newest frames are subtracted -> window_size = 2 newest frames + N random frames
+  tracking_itr_num: 100
   Calibration:
     tum:
       fx: 413.8451264 # 517.306408
@@ -40,6 +44,25 @@ gaussians:
     cam_rot_delta: 0.003
     cam_trans_delta: 0.001
   rgb_boundary_threshold: 0.01
+  edge_threshold: 1.1
+  rgb_boundary_threshold: 0.01
+  map_optimisation_params:
+    iterations: 30000
+    position_lr_init: 0.0016
+    position_lr_final: 0.0000016
+    position_lr_delay_mult: 0.01
+    position_lr_max_steps: 30000
+    feature_lr: 0.0025
+    opacity_lr: 0.05
+    scaling_lr: 0.001
+    rotation_lr: 0.001
+    percent_dense: 0.01
+    lambda_dssim: 0.2
+    densification_interval: 100
+    opacity_reset_interval: 3000
+    densify_from_iter: 500
+    densify_until_iter: 15000
+    densify_grad_threshold: 0.0002
 
 single_thread: False
 
