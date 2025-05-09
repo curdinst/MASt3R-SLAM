@@ -318,12 +318,13 @@ class GaussianOptimizer:
             # keyframes[frame_idx].opacities[valid] = self.gaussians._opacity[idx:idx+num_valid].clone()
             idx += num_valid
         print(f"updated gaussians of {num_keyframes} keyframes")
-
-        self.tracking(num_keyframes-1, self.viewpoint_stack[num_keyframes-1], tracking_itr_num=self.tracking_itr_num)
-        T_CW_opt = torch.eye(4, device=self.device)
-        T_CW_opt[:3, :3] = self.viewpoint_stack[num_keyframes-1].R
-        T_CW_opt[:3, 3] = self.viewpoint_stack[num_keyframes-1].T
-        self.optimized_poses[num_keyframes-1] = T_CW_opt.clone()
+        if save_results:
+            for kf_idx in range(num_keyframes):
+                self.tracking(kf_idx, self.viewpoint_stack[kf_idx], tracking_itr_num=self.tracking_itr_num)
+                T_CW_opt = torch.eye(4, device=self.device)
+                T_CW_opt[:3, :3] = self.viewpoint_stack[kf_idx].R
+                T_CW_opt[:3, 3] = self.viewpoint_stack[kf_idx].T
+                self.optimized_poses[kf_idx] = T_CW_opt.clone()
         # if num_keyframes == 11:
         #     self.gaussians.save_ply(f"/home/curdinst/repos/MASt3R-SLAM/logs/online_opt_{iters}_it.ply")
 
