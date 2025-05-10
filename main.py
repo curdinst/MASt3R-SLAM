@@ -82,7 +82,7 @@ def run_gaussian_optimization(cfg, dataset, model, states, keyframes: SharedKeyf
     # factor_graph = FactorGraph(model, keyframes, K, device)
     retrieval_database = load_retriever(model)
 
-    gaussian_optimizer = GaussianOptimizer(config, device)
+    gaussian_optimizer = GaussianOptimizer(config, dataset, device)
     len_frames_before = 0
     mode = states.get_mode()
     while mode is not Mode.TERMINATED:
@@ -225,6 +225,7 @@ if __name__ == "__main__":
             intrinsics["height"],
             intrinsics["calibration"],
         )
+    # assert False, "check camera intrinsics"
 
     keyframes = SharedKeyframes(manager, h, w, buffer=22)
     states = SharedStates(manager, h, w)

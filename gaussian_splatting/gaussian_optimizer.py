@@ -34,7 +34,7 @@ import shutil
 
 
 class GaussianOptimizer:
-    def __init__(self, config, device, learning_rate=0.01):
+    def __init__(self, config, dataset, device, learning_rate=0.01):
         """
         Initialize the GaussianOptimizer.
 
@@ -67,32 +67,29 @@ class GaussianOptimizer:
         self.background = torch.tensor([0, 0, 0], dtype=torch.float32, device=device)
         self.tracking_itr_num = config["gaussians"]["tracking_itr_num"]
         
-        print(f"intrinsics: {config['gaussians']['Calibration']}")
-        dataset = "replica" if "replica" in config["used_dataset"] else "tum"
-        intrinsics = munchify(config["gaussians"]["Calibration"][dataset])
-
-        self.projection_matrix = getProjectionMatrix2(
-            znear=0.01,
-            zfar=100.0,
-            fx=intrinsics.fx,
-            fy=intrinsics.fy,
-            cx=intrinsics.cx,
-            cy=intrinsics.cy,
-            W=intrinsics.width,
-            H=intrinsics.height,
-        ).transpose(0, 1)
-        self.fovx = focal2fov(intrinsics.fx, intrinsics.width)
-        self.fovy = focal2fov(intrinsics.fy, intrinsics.height)
-        self.intrinsics = intrinsics
-        self.projection_matrix = self.projection_matrix.to(device=device)
+        K_frame = dataset.camera_intrinsics.K_frame
+        fx = K_frame[0, 0]
+        fy = K_frame[1, 1]
+        cx = K_frame[0, 2]
+        cy = K_frame[1, 2]
+        H, W = dataset.get_img_shape()[0]
+        # dataset_name = config["used_dataset"].split("/")[1]
+        # W = config["gaussians"]["Calibration"][dataset_name]["width"]
+        # H = config["gaussians"]["Calibration"][dataset_name]["height"]
+        self.intrinsics = {"fx": fx, "fy": fy, "cx": cx, "cy": cy, "W":W, "H": H}
+        print(f"fx {fx}, fy {fy}, cx {cx}, cy {cy}, W {W}, H {H}")
+        self.projection_matrix = getProjectionMatrix2( znear=0.01, zfar=100.0, fx=fx, fy=fy, cx=cx, cy=cy, W=W, H=H).transpose(0, 1).to(device=device)
+        self.fovx = focal2fov(fx, W)
+        self.fovy = focal2fov(fy, H)
         self.pipeline_params = munchify(config["gaussians"]["pipeline_params"])
         opt_params = config["gaussians"]["map_optimisation_params"]
         self.opt_params = munchify(opt_params)
-        self.init_lr = 0.05
+        self.init_lr = config["gaussians"]["init_lr"]
         self.gaussians.init_lr(self.init_lr)
         self.gaussians.training_setup(self.opt_params)
         self.valid_masks = {}
         self.window_size = config["gaussians"]["window_size"]
+        self.c_conf_threshold = config["gaussians"]["c_conf_threshold"]
         self.keyframe_TFs = {}
         self.optimized_poses = {}
 
@@ -120,14 +117,14 @@ class GaussianOptimizer:
                 None,
                 None,
                 self.projection_matrix,
-                self.intrinsics.fx,
-                self.intrinsics.fy,
-                self.intrinsics.cx,
-                self.intrinsics.cy,
+                self.intrinsics["fx"],
+                self.intrinsics["fy"],
+                self.intrinsics["cx"],
+                self.intrinsics["cy"],
                 self.fovx,
                 self.fovy,
-                self.intrinsics.height,
-                self.intrinsics.width,
+                self.intrinsics["H"],
+                self.intrinsics["W"],
                 device=self.device,
             )
             # print(f"keyframe {keyframe.frame_id} T_WC {keyframe.T_WC.data}")
@@ -140,13 +137,13 @@ class GaussianOptimizer:
             # print(f"imgshape {keyframe.img.shape}")
             # print(f"viewpoint.image_width {viewpoint.image_width}")
             # print(f"viewpoint.image_height {viewpoint.image_height}")
-            viewpoint.image_width = self.intrinsics.width
-            viewpoint.image_height = self.intrinsics.height
+            # viewpoint.image_width = self.intrinsics.width
+            # viewpoint.image_height = self.intrinsics.height
             self.viewpoint_stack[idx] = viewpoint
             self.keyframe_TFs[idx] = keyframe.T_WC
             # if i == len(keyframes):
             # print("add points to gaussians")
-            c_conf_threshold = 1.5
+            c_conf_threshold = self.c_conf_threshold
             valid = (
                         keyframe.get_average_conf().reshape(-1)
                         > c_conf_threshold

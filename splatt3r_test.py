@@ -63,6 +63,7 @@ camera_intrinsics = Intrinsics.from_calib(
             intrinsics["height"],
             intrinsics["calibration"],
         )
+print(f"camera intrinsics: {camera_intrinsics}")
 
 (shape1, shape2), (feat1, feat2), (pos1, pos2) = model._encode_symmetrized(frame1.img, frame2.img, frame1.img_true_shape, frame2.img_true_shape)
 print(frame1.img.shape)
