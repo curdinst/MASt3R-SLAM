@@ -65,6 +65,7 @@ class GaussianOptimizer:
         self.keyframe_optimizers = None
         self.background = torch.tensor([0, 0, 0], dtype=torch.float32, device=device)
         self.tracking_itr_num = config["gaussians"]["tracking_itr_num"]
+        self.pre_pose_optimization = config["gaussians"]["pre_pose_optimization"]
         
         K_frame = dataset.camera_intrinsics.K_frame
         fx = K_frame[0, 0]
@@ -188,6 +189,9 @@ class GaussianOptimizer:
         # render_pkg = render(viewpoint, self.gaussians, self.pipeline_params, self.background)
         # image = render_pkg["render"]
         # print(f"image render shape {image.shape}")
+        if self.pre_pose_optimization:
+            self.tracking(num_keyframes-1, self.viewpoint_stack[num_keyframes-1], tracking_itr_num=self.tracking_itr_num)
+
         self.gaussians.init_lr(self.init_lr)
         self.gaussians.training_setup(self.opt_params)
         #         break
@@ -295,6 +299,15 @@ class GaussianOptimizer:
                 opacity=self.gaussians._opacity[idx:idx+num_valid],
                 mean=means_w,
             )
+            if frame_idx == num_keyframes -1 and self.pre_pose_optimization:
+                R_CW = self.viewpoint_stack[frame_idx].R
+                T_CW = self.viewpoint_stack[frame_idx].T
+                T_WC = - R_CW.T @ T_CW
+                quat_WC = torch.from_numpy(R.from_matrix(R_CW.T.cpu().numpy()).as_quat()).to(device=self.device)
+                print(f"old quat {keyframe.T_WC.data[0,3:7]}, new quat {quat_WC}")
+                print(f"old T {keyframe.T_WC.data[0,:3]}, new T {self.viewpoint_stack[frame_idx].T}")
+                keyframe.T_WC.data[0,3:7] = quat_WC
+                keyframe.T_WC.data[0,:3] = T_WC
             # keyframe.update_gaussians(
             #     valid_mask=valid,
             #     scale=self.gaussians._scaling[idx_0:idx_1],
@@ -324,11 +337,13 @@ class GaussianOptimizer:
         print(f"updated gaussians of {num_keyframes} keyframes")
         if save_results:
             for kf_idx in range(num_keyframes):
-                self.tracking(kf_idx, self.viewpoint_stack[kf_idx], tracking_itr_num=self.tracking_itr_num)
+                if self.pre_pose_optimization:
+                    self.tracking(kf_idx, self.viewpoint_stack[kf_idx], tracking_itr_num=self.tracking_itr_num)
                 T_CW_opt = torch.eye(4, device=self.device)
                 T_CW_opt[:3, :3] = self.viewpoint_stack[kf_idx].R
                 T_CW_opt[:3, 3] = self.viewpoint_stack[kf_idx].T
                 self.optimized_poses[kf_idx] = T_CW_opt.clone()
+                    
         # if num_keyframes == 11:
         #     self.gaussians.save_ply(f"/home/curdinst/repos/MASt3R-SLAM/logs/online_opt_{iters}_it.ply")
 
