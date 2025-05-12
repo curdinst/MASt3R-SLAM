@@ -28,7 +28,7 @@ from mast3r_slam.visualization import WindowMsg, run_visualization
 from gaussian_splatting.gaussian_optimizer import GaussianOptimizer
 import torch.multiprocessing as mp
 import thirdparty.mast3r.mast3r.model as mast3r_model
-
+import shutil
 
 
 def relocalization(frame, keyframes, factor_graph, retrieval_database):
@@ -203,7 +203,8 @@ if __name__ == "__main__":
     save_dir = path / folder_name
     os.makedirs(save_dir, exist_ok=True)
     print(f"Saving to {save_dir}")
-
+    shutil.copyfile("/home/curdinst/repos/MASt3R-SLAM/config/base.yaml", os.path.join(save_dir, "base.yaml"))
+    shutil.copyfile("/home/curdinst/repos/MASt3R-SLAM/config/calib.yaml", os.path.join(save_dir, "calib.yaml"))
 
     manager = mp.Manager()
     main2viz = new_queue(manager, args.no_viz)
@@ -270,9 +271,9 @@ if __name__ == "__main__":
     last_msg = WindowMsg()
     
     # torch.cuda.set_per_process_memory_fraction(0.33, device=device)
-        
-    backend = mp.Process(target=run_backend, args=(config, model, states, keyframes, K))
-    backend.start()
+    if config["run_backend"]:
+        backend = mp.Process(target=run_backend, args=(config, model, states, keyframes, K))
+        backend.start()
 
     gaussian_optimizer = mp.Process(target=run_gaussian_optimization, args=(config, dataset, model, states, keyframes, save_dir))
     gaussian_optimizer.start()
@@ -419,7 +420,8 @@ if __name__ == "__main__":
             cv2.imwrite(f"{savedir}/{i}.png", frame)
 
     print("done")
-    # backend.join()
+    if config["run_backend"]:
+        backend.join()
     gaussian_optimizer.join()
     if not args.no_viz:
         viz.join()

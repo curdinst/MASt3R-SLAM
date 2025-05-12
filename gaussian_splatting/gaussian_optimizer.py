@@ -29,7 +29,6 @@ import pickle
 from munch import munchify
 import os
 from datetime import datetime
-import shutil
 
 
 
@@ -42,7 +41,7 @@ class GaussianOptimizer:
             learning_rate (float): The learning rate for optimization.
         """
         self.learning_rate = learning_rate
-
+        random.seed(config["gaussians"]["seed"])
         self.config = config
         self.gaussians = GaussianModel(sh_degree=0)
         self.pipeline_params = None
@@ -92,6 +91,7 @@ class GaussianOptimizer:
         self.c_conf_threshold = config["gaussians"]["c_conf_threshold"]
         self.keyframe_TFs = {}
         self.optimized_poses = {}
+        self.N_optimized_kf_gaussians = {}
 
     def optimize(self, keyframes: SharedKeyframes, iters, save_results=False, path=None):
         print(f"run Gaussian Optimizer, number of keyframes: {len(keyframes)}")
@@ -105,7 +105,6 @@ class GaussianOptimizer:
         num_keyframes = len(keyframes)
         for idx in range(num_keyframes):
         # for idx in range(2):
-
             keyframe = keyframes[idx]
             # print(f"viewpoint_stack.keys() {self.viewpoint_stack.keys()}")
             # if idx in self.viewpoint_stack.keys(): continue
@@ -204,6 +203,14 @@ class GaussianOptimizer:
         # optimisation_window = list(range(num_keyframes))
         self.rendering_vals = {}
         print(f"optimisation_window {optimisation_window}")
+        if not save_results:
+            for frame_idx in optimisation_window:
+                if frame_idx in self.N_optimized_kf_gaussians.keys() and iters > 0:
+                    self.N_optimized_kf_gaussians[frame_idx] += 1
+                elif iters == 0:
+                    self.N_optimized_kf_gaussians[frame_idx] = 0
+                else:
+                    self.N_optimized_kf_gaussians[frame_idx] = 1
         for i in range(iters):
             self.iteration_count += 1
             loss_mapping = 0
@@ -458,12 +465,13 @@ class GaussianOptimizer:
         with open(rendering_results_file, "w") as f:
             for key, value in self.rendering_vals.items():
                 f.write(f"{key}: {value}\n")
+            f.write(f"\n# of Map optimisations per keyframe:\n keyframe: # Map optimisations\n")
+            for key, value in self.N_optimized_kf_gaussians.items():
+                f.write(f"{key}: {value}\n")
         # Create a folder with the current datetime
         optimized_poses_file = os.path.join(output_folder, "optimized_poses.pkl")
         with open(optimized_poses_file, "wb") as f:
             pickle.dump(self.optimized_poses, f)
         gaussinas_file = os.path.join(output_folder, "gaussians.ply")
         self.gaussians.save_ply(gaussinas_file)
-        shutil.copyfile("/home/curdinst/repos/MASt3R-SLAM/config/base.yaml", os.path.join(output_folder, "base.yaml"))
-        shutil.copyfile("/home/curdinst/repos/MASt3R-SLAM/config/calib.yaml", os.path.join(output_folder, "calib.yaml"))
         return

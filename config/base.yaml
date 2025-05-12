@@ -1,25 +1,26 @@
 use_calib: True
 # used_dataset: "datasets/tum/rgbd_dataset_freiburg1_desk" # datasets/replica/office2
-# used_dataset: "datasets/replica/office2" # datasets/tum/rgbd_dataset_freiburg1_desk
+used_dataset: "datasets/replica/office2" # datasets/tum/rgbd_dataset_freiburg1_desk
 # used_dataset: "datasets/replica/office1"
 # used_dataset: "datasets/replica/office3"
-used_dataset: "datasets/replica/room0"
+# used_dataset: "datasets/replica/room0"
 
 # stop_at_frame: 240
 stop_at_keyframe: 10
+run_backend: True
 gaussians:
   init_lr: 0.05
   num_iterations: 30
-  window_size: 4 # 2 newest frames are subtracted -> window_size = 2 newest frames + N random frames
+  window_size: 11 # 2 newest frames are subtracted -> window_size = 2 newest frames + N random frames
   tracking_itr_num: 100
   c_conf_threshold: 1.5
-  Calibration:
-    tum:
-      width: 512 #640
-      height: 384 #480
-    replica:
-      width: 512
-      height: 288
+  # Calibration:
+  #   tum:
+  #     width: 512 #640
+  #     height: 384 #480
+  #   replica:
+  #     width: 512
+  #     height: 288
     #   fx: 458.81054811 # 458.5710854 #413.8451264 # 517.3      # 573.51318513 # 413.8451264 # 517.306408
     #   fy: 458.10100154 # 457.86190916 # 413.175372  # 516.5      # 572.62625193 # 413.175372 # 516.469215
     #   cx: 255.6 #254.914432   # 319.5      # 254.914432   # 318.643040  
@@ -44,6 +45,7 @@ gaussians:
     #   width: 512
     #   height: 288
     #   depth_scale: 5000.0
+  seed: 0
   pipeline_params:
     convert_SHs_python: False
     compute_cov3D_python: False
