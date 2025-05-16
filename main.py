@@ -276,9 +276,9 @@ if __name__ == "__main__":
     if config["run_backend"]:
         backend = mp.Process(target=run_backend, args=(config, model, states, keyframes, K))
         backend.start()
-
-    gaussian_optimizer = mp.Process(target=run_gaussian_optimization, args=(config, dataset, model, states, keyframes, save_dir))
-    gaussian_optimizer.start()
+    if config["run_gaussian_optimizer"]:
+        gaussian_optimizer = mp.Process(target=run_gaussian_optimization, args=(config, dataset, model, states, keyframes, save_dir))
+        gaussian_optimizer.start()
 
     i = 0
     fps_timer = time.time()
@@ -350,9 +350,10 @@ if __name__ == "__main__":
             raise Exception("Invalid mode")
 
         if add_new_kf:
-            print(f"Adding new keyframe {i}, gauss_opt_frameid: {states.get_gauss_opt_frameid()}, len(keyframes): {len(keyframes)}")
-            while states.get_gauss_opt_frameid() != len(keyframes) - 1:
-                time.sleep(0.05)
+            if config["run_gaussian_optimizer"]:
+                print(f"Adding new keyframe {i}, gauss_opt_frameid: {states.get_gauss_opt_frameid()}, len(keyframes): {len(keyframes)}")
+                while states.get_gauss_opt_frameid() < len(keyframes) - 2:
+                    time.sleep(0.05)
             keyframes.append(frame)
             # print("add new keyframe", frame.frame_id)
             # print("new keyframe has sh: ", frame.SH is not None)
@@ -372,8 +373,8 @@ if __name__ == "__main__":
             print(f"FPS: {FPS}")
         i += 1
         # if i == config["stop_at_frame"]:
-        if len(keyframes) > config["stop_at_keyframe"]:
-            print(f"Last timestamp: {timestamp}")
+        if len(keyframes) > config["stop_at_keyframe"] or i > config["stop_at_frame"]:
+            print(f"Last timestamp: {timestamp}, frame: {i}, len(keyframes): {len(keyframes)}")
             states.set_mode(Mode.TERMINATED)
             break
 
@@ -427,6 +428,7 @@ if __name__ == "__main__":
     print("done")
     if config["run_backend"]:
         backend.join()
-    gaussian_optimizer.join()
+    if config["run_gaussian_optimizer"]:
+        gaussian_optimizer.join()
     if not args.no_viz:
         viz.join()

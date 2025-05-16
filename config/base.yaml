@@ -5,17 +5,18 @@ used_dataset: "datasets/replica/office2" # datasets/tum/rgbd_dataset_freiburg1_d
 # used_dataset: "datasets/replica/office3"
 # used_dataset: "datasets/replica/room0"
 
-# stop_at_frame: 240
+stop_at_frame: 225
 stop_at_keyframe: 10
 run_backend: True
+run_gaussian_optimizer: True
 gaussians:
   init_lr: 0.05
-  num_iterations: 30
+  num_iterations: 50
   window_size: 11 # 2 newest frames are subtracted -> window_size = 2 newest frames + N random frames
   tracking_itr_num: 100
   c_conf_threshold: 1.5
   pre_pose_optimization: False
-  post_pose_optimization: False
+  post_pose_optimization: True
   seed: 0
   pipeline_params:
     convert_SHs_python: False

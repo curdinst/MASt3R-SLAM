@@ -243,7 +243,7 @@ class GaussianOptimizer:
                 l1_loss_val = l1_loss(image, self.viewpoint_stack[frame_index].original_image)
                 # l1_loss_val = get_loss_mapping_rgbd(self.config, image, render_pkg["depth"], self.viewpoint_stack[frame_index], initialization=False)
                 # loss_mapping = l1_loss_val * 0.75 + 0.25 * (1-ssim_loss_val)
-                loss_mapping += l1_loss_val
+                loss_mapping = l1_loss_val
                 if i == 0 or i == iters - 1:
                     print(f"frame_index {frame_index} iteration {i} SSIM {round(ssim_loss_val.item(), 8)} L1 {round(l1_loss_val.item(), 8)}")
                 # l1_loss_mask = torch.abs(image - self.viewpoint_stack[frame_index].original_image).mean(dim=0)
