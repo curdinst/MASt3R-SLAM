@@ -22,7 +22,7 @@ from mast3r_slam.frame import Mode, SharedKeyframes, SharedStates, create_frame
 from mast3r_slam.geometry import constrain_points_to_ray, quat_mult
 from gaussian_splatting.utils.graphics_utils import focal2fov
 from gaussian_splatting.utils.pose_utils import update_pose
-from gaussian_splatting.utils.slam_utils import get_loss_tracking_rgb, get_median_depth
+from gaussian_splatting.utils.slam_utils import get_loss_tracking_rgb, get_loss_tracking_rgbd, get_loss_mapping_rgbd
 
 from matplotlib import pyplot as plt
 import pickle
@@ -65,7 +65,6 @@ class GaussianOptimizer:
         self.keyframe_optimizers = None
         self.background = torch.tensor([0, 0, 0], dtype=torch.float32, device=device)
         self.tracking_itr_num = config["gaussians"]["tracking_itr_num"]
-        self.pre_pose_optimization = config["gaussians"]["pre_pose_optimization"]
         
         K_frame = dataset.camera_intrinsics.K_frame
         fx = K_frame[0, 0]
@@ -102,6 +101,7 @@ class GaussianOptimizer:
         self.keyframe_TFs = {}
         # del self.gaussians
         self.gaussians = GaussianModel(sh_degree=0)
+        #TODO Keep gaussians, only update X_canon
         self.valid_masks = {}
         num_keyframes = len(keyframes)
         for idx in range(num_keyframes):
@@ -133,22 +133,34 @@ class GaussianOptimizer:
             viewpoint.T = -viewpoint.R.float() @ keyframe.T_WC.data[0,:3].float()
             # viewpoint.R = torch.from_numpy(rot).to(device=self.device)
             # viewpoint.T = keyframe.T_WC.data[0,:3].float()
-            viewpoint.original_image = keyframe.img.clone().to(device=self.device)/2.0+0.5
-            # print(f"imgshape {keyframe.img.shape}")
-            # print(f"viewpoint.image_width {viewpoint.image_width}")
-            # print(f"viewpoint.image_height {viewpoint.image_height}")
-            # viewpoint.image_width = self.intrinsics.width
-            # viewpoint.image_height = self.intrinsics.height
-            self.viewpoint_stack[idx] = viewpoint
-            self.keyframe_TFs[idx] = keyframe.T_WC
-            # if i == len(keyframes):
-            # print("add points to gaussians")
             c_conf_threshold = self.c_conf_threshold
             valid = (
                         keyframe.get_average_conf().reshape(-1)
                         > c_conf_threshold
                     )
             self.valid_masks[idx] = valid
+            
+            depth = einops.rearrange(keyframe.X_canon[:, -1], "(h w) -> h w", h=self.intrinsics["H"], w=self.intrinsics["W"])
+            valid_image = einops.rearrange(valid, "(h w) -> h w", h=self.intrinsics["H"], w=self.intrinsics["W"])
+            depth[~valid_image] = 0.0
+            # print(f"sum valid {(~valid_image).sum()}")
+            # print(f"depth shape {depth.shape}, min {depth.min()}, max {depth.max()}")
+            viewpoint.depth = depth
+            viewpoint.original_image = keyframe.img.clone().to(device=self.device)/2.0+0.5
+            # print(f"imgshape {keyframe.img.shape}")
+            # print(f"viewpoint.image_width {viewpoint.image_width}")
+            # print(f"viewpoint.image_height {viewpoint.image_height}")
+            # viewpoint.image_width = self.intrinsics.width
+            # viewpoint.image_height = self.intrinsics.height
+
+            if num_keyframes > 1 and idx == num_keyframes - 1 and self.config["gaussians"]["pre_pose_optimization"]:
+                self.tracking(num_keyframes-1, viewpoint, tracking_itr_num=self.tracking_itr_num)
+            self.viewpoint_stack[idx] = viewpoint
+            self.keyframe_TFs[idx] = keyframe.T_WC
+            # if i == len(keyframes):
+            # print("add points to gaussians")
+
+            
             # valid = np.ones_like(valid, dtype=bool)
             scales_new = (keyframe.T_WC.data[0,-1] * keyframe.scales)
             opacities_new = keyframe.opacities
@@ -189,8 +201,8 @@ class GaussianOptimizer:
         # render_pkg = render(viewpoint, self.gaussians, self.pipeline_params, self.background)
         # image = render_pkg["render"]
         # print(f"image render shape {image.shape}")
-        if self.pre_pose_optimization:
-            self.tracking(num_keyframes-1, self.viewpoint_stack[num_keyframes-1], tracking_itr_num=self.tracking_itr_num)
+        # for frame_idx in range(num_keyframes):
+        #     self.tracking(frame_idx, self.viewpoint_stack[frame_idx], tracking_itr_num=self.tracking_itr_num)
 
         self.gaussians.init_lr(self.init_lr)
         self.gaussians.training_setup(self.opt_params)
@@ -218,6 +230,7 @@ class GaussianOptimizer:
         for i in range(iters):
             self.iteration_count += 1
             loss_mapping = 0
+            time_now = time.time()
             # for frame_index in range(num_keyframes):
             for frame_index in optimisation_window:
             # for frame_index in range(2):
@@ -226,10 +239,11 @@ class GaussianOptimizer:
                 image = (torch.exp(viewpoint.exposure_a)) * image + viewpoint.exposure_b
                 # print(f"exposure_a {viewpoint.exposure_a}, exposure_b {viewpoint.exposure_b}")
                 ssim_loss_val = ssim(image, self.viewpoint_stack[frame_index].original_image)
-                # ssim_loss_val = 
+                # ssim_loss_val = torch.tensor(-1)
                 l1_loss_val = l1_loss(image, self.viewpoint_stack[frame_index].original_image)
+                # l1_loss_val = get_loss_mapping_rgbd(self.config, image, render_pkg["depth"], self.viewpoint_stack[frame_index], initialization=False)
                 # loss_mapping = l1_loss_val * 0.75 + 0.25 * (1-ssim_loss_val)
-                loss_mapping = l1_loss_val
+                loss_mapping += l1_loss_val
                 if i == 0 or i == iters - 1:
                     print(f"frame_index {frame_index} iteration {i} SSIM {round(ssim_loss_val.item(), 8)} L1 {round(l1_loss_val.item(), 8)}")
                 # l1_loss_mask = torch.abs(image - self.viewpoint_stack[frame_index].original_image).mean(dim=0)
@@ -263,7 +277,9 @@ class GaussianOptimizer:
                         self.gaussians.optimizer.zero_grad(set_to_none=True)
                         self.gaussians.update_learning_rate(idx)
                         loss_mapping = 0
-
+            iteration_time = time.time() - time_now
+            if i%10 == 0:
+                print(f"iteration {i} took {iteration_time:.4f} seconds")
         if save_results:
             self.draw_cameras()
 
@@ -272,7 +288,7 @@ class GaussianOptimizer:
         # for frame_idx in range(num_keyframes):
         num_valid_list = [valid.sum().item() for valid in self.valid_masks.values()]
         gauss_indices = [sum(num_valid_list[:i]) for i in range(len(num_valid_list)+1)]
-        print(f"num_valid_list {num_valid_list}, \ngauss_indices {gauss_indices}")
+        # print(f"num_valid_list {num_valid_list}, \ngauss_indices {gauss_indices}")
         for frame_idx in range(num_keyframes):
             valid = self.valid_masks[frame_idx]
             num_valid = valid.sum()
@@ -281,6 +297,15 @@ class GaussianOptimizer:
             idx_0, idx_1 = gauss_indices[frame_idx], gauss_indices[frame_idx + 1]
             
             keyframe = keyframes[frame_idx]
+            if num_keyframes > 1 and frame_idx == num_keyframes -1 and self.config["gaussians"]["pre_pose_optimization"]:
+                R_CW = self.viewpoint_stack[frame_idx].R
+                T_CW = self.viewpoint_stack[frame_idx].T
+                T_WC = - R_CW.T @ T_CW
+                quat_WC = torch.from_numpy(R.from_matrix(R_CW.T.cpu().numpy()).as_quat()).to(device=self.device)
+                print(f"old quat {keyframe.T_WC.data[0,3:7]}, new quat {quat_WC}")
+                print(f"old T {keyframe.T_WC.data[0,:3]}, new T {self.viewpoint_stack[frame_idx].T}")
+                keyframe.T_WC.data[0,3:7] = quat_WC
+                keyframe.T_WC.data[0,:3] = T_WC
             T_CW = keyframe.T_WC.inv()
             # print(f"T_WC {keyframe.T_WC.data}")
             # print(f"T_CW {T_CW.data}")
@@ -299,15 +324,7 @@ class GaussianOptimizer:
                 opacity=self.gaussians._opacity[idx:idx+num_valid],
                 mean=means_w,
             )
-            if frame_idx == num_keyframes -1 and self.pre_pose_optimization:
-                R_CW = self.viewpoint_stack[frame_idx].R
-                T_CW = self.viewpoint_stack[frame_idx].T
-                T_WC = - R_CW.T @ T_CW
-                quat_WC = torch.from_numpy(R.from_matrix(R_CW.T.cpu().numpy()).as_quat()).to(device=self.device)
-                print(f"old quat {keyframe.T_WC.data[0,3:7]}, new quat {quat_WC}")
-                print(f"old T {keyframe.T_WC.data[0,:3]}, new T {self.viewpoint_stack[frame_idx].T}")
-                keyframe.T_WC.data[0,3:7] = quat_WC
-                keyframe.T_WC.data[0,:3] = T_WC
+            
             # keyframe.update_gaussians(
             #     valid_mask=valid,
             #     scale=self.gaussians._scaling[idx_0:idx_1],
@@ -337,7 +354,7 @@ class GaussianOptimizer:
         print(f"updated gaussians of {num_keyframes} keyframes")
         if save_results:
             for kf_idx in range(num_keyframes):
-                if self.pre_pose_optimization:
+                if self.config["gaussians"]["post_pose_optimization"]:
                     self.tracking(kf_idx, self.viewpoint_stack[kf_idx], tracking_itr_num=self.tracking_itr_num)
                 T_CW_opt = torch.eye(4, device=self.device)
                 T_CW_opt[:3, :3] = self.viewpoint_stack[kf_idx].R
@@ -354,8 +371,8 @@ class GaussianOptimizer:
         return
     
     def tracking(self, cur_frame_idx, viewpoint, tracking_itr_num=100):
-        print(f"Initial pose for frame {cur_frame_idx}: T: {viewpoint.T}, R: {viewpoint.R}")
-
+        # print(f"Initial pose for frame {cur_frame_idx}: T: {viewpoint.T}, R: {viewpoint.R}")
+        T0 = viewpoint.T
         viewpoint.compute_grad_mask(self.config)
         opt_params = []
         opt_params.append(
@@ -398,7 +415,7 @@ class GaussianOptimizer:
                 render_pkg["opacity"],
             )
             pose_optimizer.zero_grad()
-            loss_tracking = get_loss_tracking_rgb(
+            loss_tracking = get_loss_tracking_rgbd(
                 self.config, image, depth, opacity, viewpoint
             )
             if tracking_itr == 0 or tracking_itr == tracking_itr_num-1: print(f"tracking iteration {tracking_itr} loss_tracking {round(loss_tracking.item(), 5)}")
@@ -411,7 +428,8 @@ class GaussianOptimizer:
             if converged:
                 print(f"tracking converged at iteration {tracking_itr} with loss_tracking {round(loss_tracking.item(), 5)}")
                 break
-        print(f"optimized pose for frame {cur_frame_idx}: T: {viewpoint.T}, R: {viewpoint.R}")
+        # print(f"optimized pose for frame {cur_frame_idx}: T: {viewpoint.T}, R: {viewpoint.R}")
+        print(f"Pose update of frame {cur_frame_idx}: T: {viewpoint.R.T @ (T0 - viewpoint.T)}")
         # self.median_depth = get_median_depth(depth, opacity)
         return render_pkg
 
@@ -479,6 +497,8 @@ class GaussianOptimizer:
         rendering_results_file = os.path.join(output_folder, "rendering_results.txt")
         with open(rendering_results_file, "w") as f:
             for key, value in self.rendering_vals.items():
+                if "mean" in key:
+                    f.write("\n")
                 f.write(f"{key}: {value}\n")
             f.write(f"\n# of Map optimisations per keyframe:\n keyframe: # Map optimisations\n")
             for key, value in self.N_optimized_kf_gaussians.items():

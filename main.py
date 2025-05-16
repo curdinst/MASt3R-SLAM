@@ -76,7 +76,7 @@ def relocalization(frame, keyframes, factor_graph, retrieval_database):
                 factor_graph.solve_GN_rays()
         return successful_loop_closure
 
-def run_gaussian_optimization(cfg, dataset, model, states, keyframes: SharedKeyframes, savedir):
+def run_gaussian_optimization(cfg, dataset, model, states: SharedStates, keyframes: SharedKeyframes, savedir):
     set_global_config(cfg)
     device = keyframes.device
     # factor_graph = FactorGraph(model, keyframes, K, device)
@@ -99,8 +99,10 @@ def run_gaussian_optimization(cfg, dataset, model, states, keyframes: SharedKeyf
         len_frames_before = len_frames
 
         num_iterations = config["gaussians"]["num_iterations"]
+        states.set_gauss_opt_frameid(len_frames - 2)
         gaussian_optimizer.optimize(keyframes=keyframes, iters=num_iterations)
-    
+        states.set_gauss_opt_frameid(len_frames - 1)
+
     gaussian_optimizer.save_results(savedir, keyframes)
     return
 
@@ -348,6 +350,9 @@ if __name__ == "__main__":
             raise Exception("Invalid mode")
 
         if add_new_kf:
+            print(f"Adding new keyframe {i}, gauss_opt_frameid: {states.get_gauss_opt_frameid()}, len(keyframes): {len(keyframes)}")
+            while states.get_gauss_opt_frameid() != len(keyframes) - 1:
+                time.sleep(0.05)
             keyframes.append(frame)
             # print("add new keyframe", frame.frame_id)
             # print("new keyframe has sh: ", frame.SH is not None)

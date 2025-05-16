@@ -211,6 +211,7 @@ class SharedStates:
         self.global_optimizer_tasks = manager.list()
         self.edges_ii = manager.list()
         self.edges_jj = manager.list()
+        self.gauss_opt_frame = manager.Value("i", -1)
 
         self.feat_dim = 1024
         self.num_patches = h * w // (16 * 16)
@@ -314,6 +315,14 @@ class SharedStates:
     def is_paused(self):
         with self.lock:
             return self.paused.value == 1
+    
+    def set_gauss_opt_frameid(self, frame_id):
+        with self.lock:
+            self.gauss_opt_frame.value = frame_id
+    
+    def get_gauss_opt_frameid(self):
+        with self.lock:
+            return self.gauss_opt_frame.value
 
 
 class SharedKeyframes:
@@ -440,6 +449,10 @@ class SharedKeyframes:
 
     def update_T_WCs(self, T_WCs, idx) -> None:
         with self.lock:
+            print(f"Updating T_WC for idx: {idx}")
+            # print(f"self.TWC[idx]: {self.T_WC[idx]}")
+            # print(f"T_WCs.data: {T_WCs.data}")
+            print(f"Position corrections: {T_WCs.data[:,0,:3] - self.T_WC[idx][:,0,:3]}")
             self.T_WC[idx] = T_WCs.data
 
     def get_dirty_idx(self):
