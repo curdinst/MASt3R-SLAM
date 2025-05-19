@@ -11,8 +11,8 @@ run_backend: True
 run_gaussian_optimizer: True
 gaussians:
   init_lr: 0.05
-  num_iterations: 50
-  window_size: 11 # 2 newest frames are subtracted -> window_size = 2 newest frames + N random frames
+  num_iterations: 30
+  window_size: 4 # 2 newest frames are subtracted -> window_size = 2 newest frames + N random frames
   tracking_itr_num: 100
   c_conf_threshold: 1.5
   pre_pose_optimization: False
@@ -29,6 +29,11 @@ gaussians:
   rgb_boundary_threshold: 0.01
   alpha: 0.9 # fraction of rgb in rgbd loss
   rgb_boundary_threshold: 0.01
+  # init_gaussian_th: 0.005
+  gaussian_th: 0.7
+  # init_gaussian_extent: 30
+  gaussian_extent: 1.0
+  size_threshold: 20
   map_optimisation_params:
     iterations: 30000
     position_lr_init: 0.0016

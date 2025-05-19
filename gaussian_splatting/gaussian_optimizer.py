@@ -101,10 +101,13 @@ class GaussianOptimizer:
         self.keyframe_TFs = {}
         # del self.gaussians
         self.gaussians = GaussianModel(sh_degree=0)
+        print(f"Num gaussians {self.gaussians._xyz.shape} should be 0!!")
         #TODO Keep gaussians, only update X_canon
         self.valid_masks = {}
         num_keyframes = len(keyframes)
         for idx in range(num_keyframes):
+            print(f"Num gaussians {self.gaussians._xyz.shape}")
+
         # for idx in range(2):
             keyframe = keyframes[idx]
             # print(f"viewpoint_stack.keys() {self.viewpoint_stack.keys()}")
@@ -243,7 +246,7 @@ class GaussianOptimizer:
                 l1_loss_val = l1_loss(image, self.viewpoint_stack[frame_index].original_image)
                 # l1_loss_val = get_loss_mapping_rgbd(self.config, image, render_pkg["depth"], self.viewpoint_stack[frame_index], initialization=False)
                 # loss_mapping = l1_loss_val * 0.75 + 0.25 * (1-ssim_loss_val)
-                loss_mapping = l1_loss_val
+                loss_mapping += l1_loss_val
                 if i == 0 or i == iters - 1:
                     print(f"frame_index {frame_index} iteration {i} SSIM {round(ssim_loss_val.item(), 8)} L1 {round(l1_loss_val.item(), 8)}")
                 # l1_loss_mask = torch.abs(image - self.viewpoint_stack[frame_index].original_image).mean(dim=0)
@@ -270,13 +273,22 @@ class GaussianOptimizer:
                     plt.savefig(path / f"render_{frame_index}.png")
                     plt.close()
                 
-                if not save_results:
-                    loss_mapping.backward()
-                    with torch.no_grad():
-                        self.gaussians.optimizer.step()
-                        self.gaussians.optimizer.zero_grad(set_to_none=True)
-                        self.gaussians.update_learning_rate(idx)
-                        loss_mapping = 0
+            if not save_results:
+                loss_mapping.backward()
+                with torch.no_grad():
+                    if num_keyframes > 1 and i % 10 == 0:
+                        print(f"num_gaussians {self.gaussians._xyz.shape}")
+                        self.gaussians.densify_and_prune(
+                            self.opt_params.densify_grad_threshold,
+                            self.config["gaussians"]["gaussian_th"],
+                            self.config["gaussians"]["gaussian_extent"],
+                            self.config["gaussians"]["size_threshold"],
+                        )
+                        print(f"num_gaussians after prune {self.gaussians._xyz.shape}")
+                    self.gaussians.optimizer.step()
+                    self.gaussians.optimizer.zero_grad(set_to_none=True)
+                    self.gaussians.update_learning_rate(idx)
+                    loss_mapping = 0
             iteration_time = time.time() - time_now
             if i%10 == 0:
                 print(f"iteration {i} took {iteration_time:.4f} seconds")
