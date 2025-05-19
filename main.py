@@ -352,8 +352,13 @@ if __name__ == "__main__":
         if add_new_kf:
             if config["run_gaussian_optimizer"]:
                 print(f"Adding new keyframe {i}, gauss_opt_frameid: {states.get_gauss_opt_frameid()}, len(keyframes): {len(keyframes)}")
+                start_waiting = time.time()
                 while states.get_gauss_opt_frameid() < len(keyframes) - 2:
                     time.sleep(0.05)
+                waiting_time = time.time() - start_waiting
+                if waiting_time > 0.1:
+                    print(f"Waiting for gaussian optimizer to finish, waiting time: {waiting_time:.2f}s")
+                
             keyframes.append(frame)
             # print("add new keyframe", frame.frame_id)
             # print("new keyframe has sh: ", frame.SH is not None)
