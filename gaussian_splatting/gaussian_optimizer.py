@@ -275,7 +275,7 @@ class GaussianOptimizer:
                     with torch.no_grad():
                         self.gaussians.optimizer.step()
                         self.gaussians.optimizer.zero_grad(set_to_none=True)
-                        self.gaussians.update_learning_rate(idx)
+                        self.gaussians.update_learning_rate(i)
                         loss_mapping = 0
             iteration_time = time.time() - time_now
             if i%10 == 0:
