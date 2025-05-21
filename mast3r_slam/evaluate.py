@@ -151,12 +151,12 @@ def save_gaussian_map(savedir, filename, keyframes, c_conf_threshold):
     sh = np.concatenate(sh, axis=0)
     opacities = np.concatenate(opacities, axis=0)
     save_gaussian_new_ply(
-        savedir / filename,
-        scales,
-        rotations,
-        means,
-        sh,
-        opacities
+        save_path = savedir / filename,
+        SH = sh,
+        M = means, 
+        O = opacities, 
+        R = scales, 
+        S = rotations
     )
 
 
@@ -195,9 +195,10 @@ def save_ply(filename, points, colors):
     ply_data = PlyData([vertex_element], text=False)
     ply_data.write(filename)
 
-def save_as_ply(pred1, pred2, save_path):
+def save_as_ply(pred1, pred2 = None, save_path=None):
     """Save the 3D Gaussians as a point cloud in the PLY format.
     Adapted loosely from PixelSplat"""
+    pred2_exists = pred2 is not None
 
     def construct_list_of_attributes(num_rest: int) -> list[str]:
         '''Construct a list of attributes for the PLY file format. This
@@ -237,13 +238,18 @@ def save_as_ply(pred1, pred2, save_path):
         return quaternion, scale
 
     pred1['covariances'] = geometry.build_covariance(pred1['scales'], pred1['rotations'])
-    pred2['covariances'] = geometry.build_covariance(pred2['scales'], pred2['rotations'])
+    if pred2_exists: pred2['covariances'] = geometry.build_covariance(pred2['scales'], pred2['rotations'])
     # Collect the Gaussian parameters
-    means = torch.stack([pred1["means"], pred2["means"]], dim=1)
-    covariances = torch.stack([pred1["covariances"], pred2["covariances"]], dim=1)
-    harmonics = torch.stack([pred1["sh"], pred2["sh"]], dim=1)[..., 0]  # Only use the first harmonic
-    opacities = torch.stack([pred1["opacities"], pred2["opacities"]], dim=1)
-
+    if pred2_exists: 
+        means = torch.stack([pred1["means"], pred2["means"]], dim=1)
+        covariances = torch.stack([pred1["covariances"], pred2["covariances"]], dim=1)
+        harmonics = torch.stack([pred1["sh"], pred2["sh"]], dim=1)[..., 0]  # Only use the first harmonic
+        opacities = torch.stack([pred1["opacities"], pred2["opacities"]], dim=1)
+    else:
+        means = pred1["means"]
+        covariances = pred1["covariances"]
+        harmonics = pred1["sh"]
+        opacities = pred1["opacities"]
     # Rearrange the tensors to the correct shape
     means = einops.rearrange(means[0], "view h w xyz -> (view h w) xyz").detach().cpu().numpy()
     covariances = einops.rearrange(covariances[0], "v h w i j -> (v h w) i j")
@@ -266,7 +272,7 @@ def save_as_ply(pred1, pred2, save_path):
     scene.write(save_path)
     print("Saved PLY file to", save_path)
 
-def save_gaussian_new_ply(save_path, S, R, M, SH, O):
+def save_gaussian_new_ply(save_path, SH, M, O, R=None, S = None, covariance=None):
     """Save the 3D Gaussians as a point cloud in the PLY format.
     Adapted loosely from PixelSplat"""
 
@@ -313,17 +319,19 @@ def save_gaussian_new_ply(save_path, S, R, M, SH, O):
     # harmonics = torch.stack([pred1["sh"], pred2["sh"]], dim=1)[..., 0]  # Only use the first harmonic
     # opacities = torch.stack([pred1["opacities"], pred2["opacities"]], dim=1)
 
-    # print("S.shape", S.shape)
-    # print("R.shape", R.shape)
-    # print("M.shape", M.shape)
-    # print("SH.shape", SH.shape)
-    # print("O.shape", O.shape)
+
 
     # means = M.detach().cpu().numpy()
     # # covariances = C
     # harmonics = SH[..., 0].detach().cpu().numpy()
     # opacities = O.detach().cpu().numpy()
-
+    if R is None:
+        R, S = covariance_to_quaternion_and_scale(covariance)
+    print("S.shape", S.shape)
+    print("R.shape", R.shape)
+    print("M.shape", M.shape)
+    print("SH.shape", SH.shape)
+    print("O.shape", O.shape)
     means = M
     harmonics = SH
     opacities = O

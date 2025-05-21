@@ -46,7 +46,6 @@ class GaussianOptimizer:
         self.gaussians = GaussianModel(sh_degree=0)
         self.pipeline_params = None
         self.opt_params = None
-        self.background = None
         self.cameras_extent = None
         self.frontend_queue = None
         self.backend_queue = None

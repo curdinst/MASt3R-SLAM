@@ -187,6 +187,9 @@ def mast3r_match_symmetric(model, feat_i, pos_i, feat_j, pos_j, shape_i, shape_j
 
 @torch.inference_mode
 def mast3r_asymmetric_inference(model, frame_i, frame_j):
+    # print("frame_i.img.shape", frame_i.img.shape)
+    # print("frame_j.img.shape", frame_j.img.shape)
+    # print(f"frame_i.img_true_shape", frame_i.img_true_shape)
     if frame_i.feat is None:
         frame_i.feat, frame_i.pos, _ = model._encode_image(
             frame_i.img, frame_i.img_true_shape
@@ -250,7 +253,7 @@ def mast3r_match_asymmetric(model, frame_i, frame_j, idx_i2j_init=None):
     new_sh1 = torch.zeros_like(SHii)
     new_sh2 = torch.zeros_like(SHji)
     new_sh1[..., 0] = sh_utils.RGB2SH(einops.rearrange(frame_i.img/2.0+0.5, 'b c h w -> b (h w) c'))
-    new_sh2[..., 0] = sh_utils.RGB2SH(einops.rearrange(frame_j.img/2.0+0.5, '(b c) h w -> b (h w) c', b=1))
+    new_sh2[..., 0] = sh_utils.RGB2SH(einops.rearrange(frame_j.img/2.0+0.5, 'b c h w -> b (h w) c'))
     SHii = SHii + new_sh1
     SHji = SHji + new_sh2
 

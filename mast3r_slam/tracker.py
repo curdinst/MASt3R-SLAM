@@ -33,6 +33,8 @@ class FrameTracker:
         # print("track")
         keyframe: Frame = self.keyframes.last_keyframe()
         # print("frame: ", frame.img.shape)
+        # print("keyframe: ", keyframe.img.shape)
+        keyframe.img = keyframe.img.unsqueeze(0)
         # print("some colors", frame.img[0, :, 10:20, 20])
         idx_f2k, valid_match_k, Xff, Cff, Qff, Xkf, Ckf, Qkf, gaussian_params = mast3r_match_asymmetric(
             self.model, frame, keyframe, idx_i2j_init=self.idx_f2k
