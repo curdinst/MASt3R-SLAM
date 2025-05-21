@@ -64,7 +64,7 @@ H, W = dataset.get_img_shape()[0]
 img_size = (H, W)
 print("Image size:", img_size)
 
-img1_idx, img2_idx = 0, 30
+img1_idx, img2_idx = 0, 12
 timestamp1, img1 = dataset[img1_idx]
 timestamp2, img2 = dataset[img2_idx]
 
@@ -323,31 +323,49 @@ viewpoint1 = Camera(
                 W,
                 device=device,
             )
+
+print(f"viewpoint1.T {viewpoint1.T}")
+print(f"viewpoint1.R {viewpoint1.R}")
 background = torch.tensor([0, 0, 0], dtype=torch.float32, device=device)
 pipeline_params = munchify(config["gaussians"]["pipeline_params"])
 render_pkg = render(viewpoint1, gaussians, pipeline_params, background)
 
 rendered_img = render_pkg['render']
 print(f"Rendered image shape: {rendered_img.shape}")
+psnr_value = psnr(rendered_img.unsqueeze(0), image1.unsqueeze(0)).item()
+
 print("psnr: ", psnr(rendered_img.unsqueeze(0)[...,10:-10,10:-10], image1.unsqueeze(0)[...,10:-10,10:-10]))
 print("ssim: ", ssim(rendered_img, image1))
 print(f"image1 max {image1.max()}, min {image1.min()}")
 print(f"rendered_img max {rendered_img.max()}, min {rendered_img.min()}")
 # Save the rendered image as a PNG file
-save_image(rendered_img, results_path / "render.png")
-save_image(image1, results_path / "gt_image.png")
+# save_image(rendered_img, results_path / "render.png")
+# save_image(image1, results_path / "gt_image.png")
 print("Rendered image saved as logs/rendered_image.png")
-print(image1)
-print(rendered_img)
+# print(image1)
+# print(rendered_img)
+
+# image1 = image1[...,10:-10,10:-10]
 gt_img_rearranged = einops.rearrange(image1.cpu().detach().numpy(), "c h w -> h w c")
 a,b = np.min(gt_img_rearranged), np.max(gt_img_rearranged)
 plt.figure()
 plt.imshow((gt_img_rearranged- a)/(b-a))
+plt.title("Ground Truth Image")
 plt.savefig(results_path / f"gt_image1.png")
 plt.close()
 plt.figure()
+# rendered_img = rendered_img[...,10:-10,10:-10]
 plt.imshow(rendered_img.cpu().detach().numpy().transpose(1,2,0))
+plt.title(f"Rendered Image - PSNR: {psnr_value:.2f}")
 plt.savefig(results_path / f"rendered_image1.png")
+plt.close()
+
+plt.figure()
+show_mask = rendered_img.clone()
+show_mask[:, ~mask_upsampled] = torch.zeros((3, H*W-mask_upsampled.sum())).type(torch.float32).to(device=device)
+plt.imshow(show_mask.cpu().detach().numpy().transpose(1,2,0))
+plt.title("Mask")
+plt.savefig(results_path / f"mask1.png")
 plt.close()
 
 print("saved")
