@@ -61,6 +61,150 @@ def build_covariance(scale, rotation_xyzw):
         @ einops.rearrange(rotation, "... i j -> ... j i")
     )
 
+def quaternion_to_matrix(quaternions):
+    """
+    Converts a batch of quaternions (x, y, z, w) to rotation matrices.
+    Args:
+        quaternions (torch.Tensor): A tensor of shape (..., 4) representing quaternions (x, y, z, w).
+    Returns:
+        torch.Tensor: A tensor of shape (..., 3, 3) representing rotation matrices.
+    """
+    x, y, z, w = quaternions[..., 0], quaternions[..., 1], quaternions[..., 2], quaternions[..., 3]
+
+    xx, yy, zz = 2 * x * x, 2 * y * y, 2 * z * z
+    xy, xz, yz = 2 * x * y, 2 * x * z, 2 * y * z
+    wx, wy, wz = 2 * w * x, 2 * w * y, 2 * w * z
+
+    matrix = torch.empty(quaternions.shape[:-1] + (3, 3), dtype=quaternions.dtype, device=quaternions.device)
+
+    matrix[..., 0, 0] = 1 - yy - zz
+    matrix[..., 0, 1] = xy - wz
+    matrix[..., 0, 2] = xz + wy
+
+    matrix[..., 1, 0] = xy + wz
+    matrix[..., 1, 1] = 1 - xx - zz
+    matrix[..., 1, 2] = yz - wx
+
+    matrix[..., 2, 0] = xz - wy
+    matrix[..., 2, 1] = yz + wx
+    matrix[..., 2, 2] = 1 - xx - yy
+
+    return matrix
+
+def matrix_to_quaternion(matrix):
+    """
+    Converts a batch of rotation matrices to quaternions (x, y, z, w).
+    Based on "Quaternions from Rotation Matrix and Translation Vector" by Mike Johnson.
+    Args:
+        matrix (torch.Tensor): A tensor of shape (..., 3, 3) representing rotation matrices.
+    Returns:
+        torch.Tensor: A tensor of shape (..., 4) representing quaternions (x, y, z, w).
+    """
+    batch_dim = matrix.shape[:-2]
+    quaternions = torch.empty(batch_dim + (4,), dtype=matrix.dtype, device=matrix.device)
+
+    t = torch.trace_matrix(matrix) # This is not directly available for batch
+    # A workaround for batch trace:
+    trace_val = matrix[..., 0, 0] + matrix[..., 1, 1] + matrix[..., 2, 2]
+
+    # Case 1: trace_val > 0
+    mask1 = trace_val > 0
+    s1 = torch.sqrt(trace_val[mask1] + 1.0) * 2
+    quaternions[mask1, 3] = 0.25 * s1
+    quaternions[mask1, 0] = (matrix[mask1, 2, 1] - matrix[mask1, 1, 2]) / s1
+    quaternions[mask1, 1] = (matrix[mask1, 0, 2] - matrix[mask1, 2, 0]) / s1
+    quaternions[mask1, 2] = (matrix[mask1, 1, 0] - matrix[mask1, 0, 1]) / s1
+
+    # Case 2: matrix[0,0] is the largest diagonal element
+    mask2 = ~mask1 & (matrix[..., 0, 0] > matrix[..., 1, 1]) & (matrix[..., 0, 0] > matrix[..., 2, 2])
+    s2 = torch.sqrt(1.0 + matrix[mask2, 0, 0] - matrix[mask2, 1, 1] - matrix[mask2, 2, 2]) * 2
+    quaternions[mask2, 3] = (matrix[mask2, 2, 1] - matrix[mask2, 1, 2]) / s2
+    quaternions[mask2, 0] = 0.25 * s2
+    quaternions[mask2, 1] = (matrix[mask2, 0, 1] + matrix[mask2, 1, 0]) / s2
+    quaternions[mask2, 2] = (matrix[mask2, 0, 2] + matrix[mask2, 2, 0]) / s2
+
+    # Case 3: matrix[1,1] is the largest diagonal element
+    mask3 = ~mask1 & ~mask2 & (matrix[..., 1, 1] > matrix[..., 2, 2])
+    s3 = torch.sqrt(1.0 + matrix[mask3, 1, 1] - matrix[mask3, 0, 0] - matrix[mask3, 2, 2]) * 2
+    quaternions[mask3, 3] = (matrix[mask3, 0, 2] - matrix[mask3, 2, 0]) / s3
+    quaternions[mask3, 0] = (matrix[mask3, 0, 1] + matrix[mask3, 1, 0]) / s3
+    quaternions[mask3, 1] = 0.25 * s3
+    quaternions[mask3, 2] = (matrix[mask3, 1, 2] + matrix[mask3, 2, 1]) / s3
+
+    # Case 4: matrix[2,2] is the largest diagonal element
+    mask4 = ~mask1 & ~mask2 & ~mask3 # This should cover the remaining cases
+    s4 = torch.sqrt(1.0 + matrix[mask4, 2, 2] - matrix[mask4, 0, 0] - matrix[mask4, 1, 1]) * 2
+    quaternions[mask4, 3] = (matrix[mask4, 1, 0] - matrix[mask4, 0, 1]) / s4
+    quaternions[mask4, 0] = (matrix[mask4, 0, 2] + matrix[mask4, 2, 0]) / s4
+    quaternions[mask4, 1] = (matrix[mask4, 1, 2] + matrix[mask4, 2, 1]) / s4
+    quaternions[mask4, 2] = 0.25 * s4
+
+    # Normalize quaternions
+    norm = torch.linalg.norm(quaternions, dim=-1, keepdim=True)
+    quaternions = quaternions / norm
+
+    return quaternions
+
+def inverse_build_covariance_torch(covariance_matrix):
+    """
+    Inverse function for build_covariance, using PyTorch.
+    Recovers the scale and rotation quaternion from a 3x3 covariance matrix.
+
+    Args:
+        covariance_matrix (torch.Tensor): A 3x3 symmetric positive semi-definite covariance matrix.
+                                          Can be a batch of matrices (..., 3, 3).
+
+    Returns:
+        tuple: A tuple containing:
+            - scale (torch.Tensor): A 3-dimensional tensor representing the original scale.
+                                    Shape (..., 3).
+            - rotation_xyzw (torch.Tensor): A 4-dimensional tensor representing the original quaternion (x, y, z, w).
+                                            Shape (..., 4).
+    """
+    # 1. Perform Eigen Decomposition
+    # torch.linalg.eigh returns eigenvalues in ascending order and corresponding eigenvectors.
+    # For a symmetric matrix, eigvals returns real eigenvalues and eigvecs returns orthogonal eigenvectors.
+    eigenvalues, eigenvectors = torch.linalg.eigh(covariance_matrix)
+
+    # Ensure eigenvalues are non-negative (due to potential numerical precision issues)
+    # Clamp to a small positive value to avoid issues with sqrt(negative number)
+    eigenvalues = torch.clamp(eigenvalues, min=1e-9)
+
+    # 2. Extract Scale
+    # The original scales are the square root of the eigenvalues.
+    scale = torch.sqrt(eigenvalues)
+
+    # 3. Extract Rotation (Quaternion)
+    # The eigenvectors matrix is the rotation matrix.
+    # We need to handle potential reflections (determinant -1).
+    # Check the determinant for the last two dimensions (the 3x3 matrix).
+    det_eigenvectors = torch.linalg.det(eigenvectors)
+
+    # If the determinant is -1, flip the sign of one of the eigenvectors to make it a proper rotation.
+    # It's arbitrary which column to flip, typically the last one.
+    # Need to handle batch dimensions.
+    # Create a mask for matrices with determinant < 0.
+    mask_reflection = det_eigenvectors < 0
+
+    # Apply the flip only to the matrices in the batch that are reflections.
+    # We need to use `where` or direct indexing carefully.
+    if mask_reflection.any():
+        # Create a new eigenvectors tensor to modify conditionally
+        eigenvectors_corrected = eigenvectors.clone()
+        eigenvectors_corrected[mask_reflection, :, 0] *= -1 # Flip the first column for those matrices
+
+        # Ensure the corrected matrix is still orthonormal if needed (e.g., QR decomposition)
+        # In practice, with eigh, this one flip should be enough for proper rotation.
+        # It maintains orthogonality and changes determinant from -1 to 1.
+
+        rotation_matrix = eigenvectors_corrected
+    else:
+        rotation_matrix = eigenvectors
+
+    # Convert the rotation matrix to a quaternion
+    rotation_xyzw = matrix_to_quaternion(rotation_matrix)
+
+    return scale, rotation_xyzw
 
 # --- Projections ---
 

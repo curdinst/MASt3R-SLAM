@@ -45,10 +45,13 @@ from munch import munchify
 from torchvision.utils import save_image
 
 
-grad_threshold = 0.1
+reduced = True
+grad_threshold = 100000
+scale_factor = 0.8
+save_ply = True
+
 
 # Load images
-reduced = False
 load_config("config/base.yaml")
 
 device = "cuda:0"
@@ -64,7 +67,7 @@ H, W = dataset.get_img_shape()[0]
 img_size = (H, W)
 print("Image size:", img_size)
 
-img1_idx, img2_idx = 0, 12
+img1_idx, img2_idx = 0, 24
 timestamp1, img1 = dataset[img1_idx]
 timestamp2, img2 = dataset[img2_idx]
 
@@ -147,6 +150,28 @@ def get_mask(img):
     print("Upsampled mask shape:", mask_upsampled.shape)
     return mask_downsampled.squeeze(0).squeeze(0), mask_upsampled
 
+def average_quaternions(quaternions):
+    """
+    Average a batch of unit quaternions using Markley's method.
+    Args:
+        quaternions: Tensor of shape (..., N, 4), where N is the number of quaternions.
+    Returns:
+        avg_quaternion: Tensor of shape (..., 4)
+    """
+    # Ensure input is normalized
+    print(quaternions)
+    quaternions = F.normalize(quaternions, dim=-1)
+    print(quaternions)
+    # Compute symmetric accumulator matrix A = sum(q_i * q_i^T)
+    A = torch.einsum("...ni,...nj->...ij", quaternions, quaternions)
+
+    # Compute eigenvectors and eigenvalues of A
+    eigvals, eigvecs = torch.linalg.eigh(A)
+
+    # Eigenvector with largest eigenvalue is the average quaternion
+    avg_quaternion = eigvecs[..., -1]  # (..., 4)
+    return avg_quaternion
+
 print(f"frame1 img shape: {frame1.img.shape}")
 image1 = einops.rearrange(frame1.img, "b c h w ->(b c) h w")
 image1 = image1*0.5 + 0.5
@@ -176,15 +201,15 @@ covariances = geometry.build_covariance(Sii, Rii)
 spherical_harmonics = einops.rearrange(SHii, "(h w) c d -> (c d) h w", h=H, w=W)
 opacities = einops.rearrange(Oii, "(h w) c -> c h w", h=H, w=W)
 means = einops.rearrange(Mii, "(h w) c -> c h w", h=H, w=W)
-print(f"covariances shape: {covariances.shape}")
-covariances = einops.rearrange(covariances, "(h w) x y -> h w x y", h=H, w=W)
-
+# print(f"covariances shape: {covariances.shape}")
+# covariances = einops.rearrange(covariances, "(h w) x y -> h w x y", h=H, w=W)
+scales = einops.rearrange(Sii, "(h w) c -> c h w", h=H, w=W)
+rotations = einops.rearrange(Rii, "(h w) c -> c h w", h=H, w=W)
 
 mask_downsampled, mask_upsampled = get_mask(image1)
 print("Mask shape:", mask_downsampled.shape)
 print(mask_downsampled)
 
-# exit()
 num_fused = mask_downsampled.sum()
 #upsample mask again to take gaussians that are not in the mask
 indices = torch.nonzero(mask_downsampled, as_tuple=False)
@@ -194,48 +219,81 @@ print(f"Indices shape: {indices.shape}, num_fused: {num_fused}")
 u = indices[:, 0] * 2
 v = indices[:, 1] * 2
 print(f"u shape: {u.shape}, v shape: {v.shape}")
-print(f"max u {u.max()}, max v {v.max()}")
+# print(f"max u {u.max()}, max v {v.max()}")
 
 # Gather neighbor values
-val0 = means[:, u, v]
-val1 = means[:, u, v+1]
-val2 = means[:, u+1, v]
-val3 = means[:, u+1, v+1]
-print(f"val0: {val0}")
-fused_means = ((val0 + val1 + val2 + val3) / 4)
-covariance_factor = 1.0
+# val0 = means[:, u, v]
+# val1 = means[:, u, v+1]
+# val2 = means[:, u+1, v]
+# val3 = means[:, u+1, v+1]
+# print(f"val0: {val0}")
+# fused_means = ((val0 + val1 + val2 + val3) / 4.0)
+fused_means = (means[:, u, v] + means[:, u, v+1] + means[:, u+1, v] + means[:, u+1, v+1]) / 4.0
 fused_opacities = (opacities[:, u, v] + opacities[:, u, v+1] + opacities[:, u+1, v] + opacities[:, u+1, v+1]) / 4.0
-fused_covariances = (covariances[u, v, ...] + covariances[u, v+1, ...] + covariances[u+1, v, ...] + covariances[u+1, v+1, ...]) * covariance_factor
+# fused_covariances = (covariances[u, v, ...] + covariances[u, v+1, ...] + covariances[u+1, v, ...] + covariances[u+1, v+1, ...]) * covariance_factor
 fused_sh = (spherical_harmonics[:, u, v] + spherical_harmonics[:, u, v+1] + spherical_harmonics[:, u+1, v] + spherical_harmonics[:, u+1, v+1]) / 4.0
+fused_scales = (scales[:, u, v] + scales[:, u, v+1] + scales[:, u+1, v] + scales[:, u+1, v+1]) * scale_factor
+quat1, quat2, quat3, quat4 = rotations[:, u, v], rotations[:, u, v+1], rotations[:, u+1, v], rotations[:, u+1, v+1]
+quats = torch.stack((quat1, quat2, quat3, quat4), dim=1).permute(2, 0, 1)
+print(f"quats shape: {quats.shape}")
+print(f"quats: {quats}")
+print(f"scales: {scales[:, u, v].max()}, {scales[:, u, v].min()}")
+fused_rotations = average_quaternions(quats)
+# fused_rotations = (quat1 + quat2 + quat3 + quat4) / 4.0
+
+# fused_means = means[:, u, v]
+# fused_opacities = opacities[:, u, v]
+# fused_sh = spherical_harmonics[:, u, v]
+# fused_scales = scales[:, u, v]
+fused_rotations= rotations[:, u, v]
+fused_rotations = einops.rearrange(fused_rotations, "c n -> n c")
+print(f"fused_rotations shape: {fused_rotations.shape}")
+
 print("Fused means shape:", fused_means.shape)
 
 fused_means = einops.rearrange(fused_means, "c n -> n c")
 fused_opacities = einops.rearrange(fused_opacities, "c n-> n c")
 fused_sh = einops.rearrange(fused_sh, "c n -> n c")
-print(f"fused_menas {fused_means}")
+# print(f"fused_menas {fused_means}")
+fused_scales = einops.rearrange(fused_scales, "c n -> n c")
+print(f"fused_scales shape: {fused_scales.shape}")
+
+# fused_sh[:, 0] += 5.0
 
 original_means = means[:, ~mask_upsampled]
 original_opacities = opacities[:, ~mask_upsampled]
-original_covariances = covariances[~mask_upsampled, ...]
+# original_covariances = covariances[~mask_upsampled, ...]
 original_sh = spherical_harmonics[:, ~mask_upsampled]
+original_scales = scales[:, ~mask_upsampled]
+original_rotations = rotations[:, ~mask_upsampled]
+
+# original_means = einops.rearrange(means, "xyz h w -> xyz (h w)")
+# original_opacities = einops.rearrange(opacities, "o h w -> o (h w)")
+# # original_covariances = einops.rearrange(covariances, "h w x y -> (h w) x y")
+# original_sh = einops.rearrange(spherical_harmonics, "c h w -> c (h w)")
 
 original_means = einops.rearrange(original_means, "c n -> n c")
 original_opacities = einops.rearrange(original_opacities, "c n-> n c")
 original_sh = einops.rearrange(original_sh, "c n -> n c")
+original_scales = einops.rearrange(original_scales, "c n -> n c")
+original_rotations = einops.rearrange(original_rotations, "c n -> n c")
 
 reduced_means = torch.cat((fused_means, original_means), dim=0)
 reduced_opacities = torch.cat((fused_opacities, original_opacities), dim=0)
 reduced_sh = torch.cat((fused_sh, original_sh), dim=0)
-reduced_covariances = torch.cat((fused_covariances, original_covariances), dim=0)
+# reduced_covariances = torch.cat((fused_covariances, original_covariances), dim=0)
+reduced_scales = torch.cat((fused_scales, original_scales), dim=0)
+reduced_rotations = torch.cat((fused_rotations, original_rotations), dim=0)
 num_gaussians = reduced_means.shape[0]
-reduced = True
+num_gaussians_original = Xii.shape[0]
 # save_as_ply(pred1, pred1, recon_file)
-reduced_name = f"gaussians_reduced_th_{grad_threshold}_covf_{covariance_factor}_n_{num_gaussians}" if reduced else f"gaussians_original"
 
+input_imgs = f"_frame_{img1_idx}_{img2_idx}"
+reduced_name = f"gaussians_reduced_th_{grad_threshold}_covf_{scale_factor}_n_{num_gaussians}" if reduced else f"gaussians_original_n_{num_gaussians_original}"
+reduced_name += input_imgs
 results_path = pathlib.Path(f"/home/curdinst/repos/MASt3R-SLAM/logs/{reduced_name}/")
 results_path.mkdir(exist_ok=True, parents=True)
 gaussians_file = results_path / f"gaussians.ply"
-save_ply = False
 if not reduced and save_ply:
     save_gaussian_new_ply(
         save_path=gaussians_file,
@@ -246,12 +304,20 @@ if not reduced and save_ply:
         O=Oii.cpu().numpy(),
     )
 elif save_ply:
+    # save_gaussian_new_ply(
+    #     save_path=gaussians_file,
+    #     M=reduced_means.cpu().numpy(),
+    #     SH=reduced_sh.squeeze(-1).cpu().numpy(),
+    #     O=reduced_opacities.cpu().numpy(),
+    #     covariance=reduced_covariances,
+    # )
     save_gaussian_new_ply(
         save_path=gaussians_file,
         M=reduced_means.cpu().numpy(),
         SH=reduced_sh.squeeze(-1).cpu().numpy(),
         O=reduced_opacities.cpu().numpy(),
-        covariance=reduced_covariances,
+        S=reduced_scales.cpu().numpy(),
+        R=reduced_rotations.cpu().numpy(),
     )
 
 print("predctions done")
@@ -276,10 +342,21 @@ def covariance_to_quaternion_and_scale(covariance):
         quaternion = torch.from_numpy(quaternion).to(device)
 
         return quaternion, scale
+
+# example_rot = torch.tensor([[1.3152946438, 0.5, 0.7, 0.1]], device=device)
+# example_scale = torch.tensor([[1.0, 2.0, 3.0]], device=device)
+# example_cov = geometry.build_covariance(example_scale, example_rot)
+# ret_rot, ret_scale = covariance_to_quaternion_and_scale(example_cov)
+# # ret_rot, ret_scale = geometry.inverse_build_covariance_torch(example_cov)
+# print(f"ret_rot: {ret_rot}")
+# print(f"ret_scale: {ret_scale}")
+# exit()
+
 print(f"SHii shape: {SHii.shape}")
 reduced_sh = einops.rearrange(reduced_sh, "n c -> n c 1")
 print(f"reduced_sh shape: {reduced_sh.shape}")
-reduced_rotations, reduced_scales = covariance_to_quaternion_and_scale(reduced_covariances)
+# reduced_rotations, reduced_scales = covariance_to_quaternion_and_scale(reduced_covariances)
+# reduced_rotations, reduced_scales = Rii, Sii
 gaussians = GaussianModel(sh_degree=0)
 if not reduced:
     gaussians.add_points(
@@ -341,7 +418,6 @@ print(f"rendered_img max {rendered_img.max()}, min {rendered_img.min()}")
 # Save the rendered image as a PNG file
 # save_image(rendered_img, results_path / "render.png")
 # save_image(image1, results_path / "gt_image.png")
-print("Rendered image saved as logs/rendered_image.png")
 # print(image1)
 # print(rendered_img)
 
@@ -368,4 +444,4 @@ plt.title("Mask")
 plt.savefig(results_path / f"mask1.png")
 plt.close()
 
-print("saved")
+print(f"Saved results in {results_path}")
