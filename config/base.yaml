@@ -6,13 +6,13 @@ used_dataset: "datasets/replica/office2" # datasets/tum/rgbd_dataset_freiburg1_d
 # used_dataset: "datasets/replica/room0"
 
 stop_at_frame: 1000000
-stop_at_keyframe: 10
+stop_at_keyframe: 20
 run_backend: True
 run_gaussian_optimizer: True
 gaussians:
   init_lr: 6.0
   num_iterations: 50
-  window_size: 11 # 2 newest frames are subtracted -> window_size = 2 newest frames + N random frames
+  window_size: 10 # 2 newest frames are subtracted -> window_size = 2 newest frames + N random frames
   tracking_itr_num: 100
   c_conf_threshold: 1.5
   pre_pose_optimization: False

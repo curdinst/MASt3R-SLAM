@@ -107,7 +107,7 @@ class GaussianOptimizer:
         self.valid_masks = {}
         num_keyframes = len(keyframes)
         for frame_idx in range(num_keyframes):
-            print(f"Num gaussians {self.gaussians._xyz.shape}")
+            print(f"Num gaussians {self.gaussians._xyz.shape[0]:,}")
 
         # for idx in range(2):
             keyframe = keyframes[frame_idx]
@@ -224,10 +224,11 @@ class GaussianOptimizer:
                 render_pkg = render(self.viewpoint_stack[frame_index], self.gaussians, self.pipeline_params, self.background)
                 image = render_pkg["render"]
                 n_touched_acm.append(render_pkg["n_touched"])
-                image = (torch.exp(viewpoint.exposure_a)) * image + viewpoint.exposure_b
+                # image = (torch.exp(viewpoint.exposure_a)) * image + viewpoint.exposure_b
                 # print(f"exposure_a {viewpoint.exposure_a}, exposure_b {viewpoint.exposure_b}")
                 # ssim_loss_val = torch.tensor(-1)
                 l1_loss_val = l1_loss(image, self.viewpoint_stack[frame_index].original_image)
+                # l1_loss_val = get_loss_mapping_rgbd(self.config, image, render_pkg["depth"], self.viewpoint_stack[frame_index], initialization=False)
                 # l1_loss_val = get_loss_mapping_rgbd(self.config, image, render_pkg["depth"], self.viewpoint_stack[frame_index], initialization=False)
                 # loss_mapping = l1_loss_val * 0.75 + 0.25 * (1-ssim_loss_val)
                 loss_mapping += l1_loss_val
