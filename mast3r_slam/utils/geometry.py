@@ -1,5 +1,6 @@
 import einops
 import torch
+import torch.nn.functional as F
 
 # --- Intrinsics Transformations ---
 
@@ -53,6 +54,8 @@ def build_covariance(scale, rotation_xyzw):
     '''Build the 3x3 covariance matrix from the three dimensional scale and the
     four dimension quaternion'''
     scale = scale.diag_embed()
+    # TODO: Check if the quaternion should be normalized!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!¨
+    rotation_xyzw = F.normalize(rotation_xyzw, dim=-1)
     rotation = quaternion_to_matrix(rotation_xyzw)
     return (
         rotation

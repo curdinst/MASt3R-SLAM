@@ -202,7 +202,7 @@ spherical_harmonics = einops.rearrange(SHii, "(h w) c d -> (c d) h w", h=H, w=W)
 opacities = einops.rearrange(Oii, "(h w) c -> c h w", h=H, w=W)
 means = einops.rearrange(Mii, "(h w) c -> c h w", h=H, w=W)
 # print(f"covariances shape: {covariances.shape}")
-# covariances = einops.rearrange(covariances, "(h w) x y -> h w x y", h=H, w=W)
+covariances = einops.rearrange(covariances, "(h w) x y -> h w x y", h=H, w=W)
 scales = einops.rearrange(Sii, "(h w) c -> c h w", h=H, w=W)
 rotations = einops.rearrange(Rii, "(h w) c -> c h w", h=H, w=W)
 
@@ -230,7 +230,7 @@ print(f"u shape: {u.shape}, v shape: {v.shape}")
 # fused_means = ((val0 + val1 + val2 + val3) / 4.0)
 fused_means = (means[:, u, v] + means[:, u, v+1] + means[:, u+1, v] + means[:, u+1, v+1]) / 4.0
 fused_opacities = (opacities[:, u, v] + opacities[:, u, v+1] + opacities[:, u+1, v] + opacities[:, u+1, v+1]) / 4.0
-# fused_covariances = (covariances[u, v, ...] + covariances[u, v+1, ...] + covariances[u+1, v, ...] + covariances[u+1, v+1, ...]) * covariance_factor
+fused_covariances = (covariances[u, v, ...] + covariances[u, v+1, ...] + covariances[u+1, v, ...] + covariances[u+1, v+1, ...]) * 0.25
 fused_sh = (spherical_harmonics[:, u, v] + spherical_harmonics[:, u, v+1] + spherical_harmonics[:, u+1, v] + spherical_harmonics[:, u+1, v+1]) / 4.0
 fused_scales = (scales[:, u, v] + scales[:, u, v+1] + scales[:, u+1, v] + scales[:, u+1, v+1]) * scale_factor
 quat1, quat2, quat3, quat4 = rotations[:, u, v], rotations[:, u, v+1], rotations[:, u+1, v], rotations[:, u+1, v+1]
@@ -262,14 +262,14 @@ print(f"fused_scales shape: {fused_scales.shape}")
 
 original_means = means[:, ~mask_upsampled]
 original_opacities = opacities[:, ~mask_upsampled]
-# original_covariances = covariances[~mask_upsampled, ...]
+original_covariances = covariances[~mask_upsampled, ...]
 original_sh = spherical_harmonics[:, ~mask_upsampled]
 original_scales = scales[:, ~mask_upsampled]
 original_rotations = rotations[:, ~mask_upsampled]
 
 # original_means = einops.rearrange(means, "xyz h w -> xyz (h w)")
 # original_opacities = einops.rearrange(opacities, "o h w -> o (h w)")
-# # original_covariances = einops.rearrange(covariances, "h w x y -> (h w) x y")
+# original_covariances = einops.rearrange(covariances, "h w x y -> (h w) x y")
 # original_sh = einops.rearrange(spherical_harmonics, "c h w -> c (h w)")
 
 original_means = einops.rearrange(original_means, "c n -> n c")
@@ -281,7 +281,7 @@ original_rotations = einops.rearrange(original_rotations, "c n -> n c")
 reduced_means = torch.cat((fused_means, original_means), dim=0)
 reduced_opacities = torch.cat((fused_opacities, original_opacities), dim=0)
 reduced_sh = torch.cat((fused_sh, original_sh), dim=0)
-# reduced_covariances = torch.cat((fused_covariances, original_covariances), dim=0)
+reduced_covariances = torch.cat((fused_covariances, original_covariances), dim=0)
 reduced_scales = torch.cat((fused_scales, original_scales), dim=0)
 reduced_rotations = torch.cat((fused_rotations, original_rotations), dim=0)
 num_gaussians = reduced_means.shape[0]
@@ -327,14 +327,21 @@ def covariance_to_quaternion_and_scale(covariance):
         a three dimensional scale vector'''
 
         # Perform singular value decomposition
-        U, S, V = torch.linalg.svd(covariance)
+        # U, S, V = torch.linalg.svd(covariance)
+        S, U = torch.linalg.eig(covariance)
+
+        # print(F"U shape: {U.shape}, S shape: {S.shape}, V shape: {V.shape}")
 
         # The scale factors are the square roots of the eigenvalues
         scale = torch.sqrt(S)
 
         # The rotation matrix is U*Vt
-        rotation_matrix = torch.bmm(U, V.transpose(-2, -1))
+        # rotation_matrix = torch.bmm(U, V.transpose(-2, -1))
+        rotation_matrix = U
         rotation_matrix_np = rotation_matrix.detach().cpu().numpy()
+
+        # print(f"covariance: {covariance[0,...]}")
+        # print(f"RSStRt: {torch.bmm(torch.bmm(rotation_matrix,scale.diag_embed()),scale.diag_embed().transpose(-2, -1))}")
 
         # Use scipy to convert the rotation matrix to a quaternion
         rotation = Rotation.from_matrix(rotation_matrix_np)
@@ -343,19 +350,22 @@ def covariance_to_quaternion_and_scale(covariance):
 
         return quaternion, scale
 
-# example_rot = torch.tensor([[1.3152946438, 0.5, 0.7, 0.1]], device=device)
-# example_scale = torch.tensor([[1.0, 2.0, 3.0]], device=device)
-# example_cov = geometry.build_covariance(example_scale, example_rot)
-# ret_rot, ret_scale = covariance_to_quaternion_and_scale(example_cov)
-# # ret_rot, ret_scale = geometry.inverse_build_covariance_torch(example_cov)
-# print(f"ret_rot: {ret_rot}")
-# print(f"ret_scale: {ret_scale}")
+example_rot = torch.tensor([[0.3152946438, 0.5, 0.7, 0.1]], device=device)
+example_scale = torch.tensor([[1.0, 2.0, 3.0]], device=device)
+example_cov = geometry.build_covariance(example_scale, example_rot)
+ret_rot, ret_scale = covariance_to_quaternion_and_scale(example_cov)
+example_cov = geometry.build_covariance(ret_scale.float(), ret_rot.float())
+ret_rot, ret_scale = covariance_to_quaternion_and_scale(example_cov)
+ret_rot, ret_scale = geometry.inverse_build_covariance_torch(example_cov)
+print(f"ret_rot: {ret_rot}")
+print(f"ret_scale: {ret_scale}")
 # exit()
 
 print(f"SHii shape: {SHii.shape}")
 reduced_sh = einops.rearrange(reduced_sh, "n c -> n c 1")
 print(f"reduced_sh shape: {reduced_sh.shape}")
-# reduced_rotations, reduced_scales = covariance_to_quaternion_and_scale(reduced_covariances)
+print(f"reduced_covariances shape: {reduced_covariances.shape}")
+reduced_rotations, reduced_scales = covariance_to_quaternion_and_scale(reduced_covariances)
 # reduced_rotations, reduced_scales = Rii, Sii
 gaussians = GaussianModel(sh_degree=0)
 if not reduced:
