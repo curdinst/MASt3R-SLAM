@@ -102,9 +102,9 @@ class GaussianOptimizer:
         self.viewpoint_stack = {}
         self.keyframe_TFs = {}
         # del self.gaussians
-        # self.gaussians = GaussianModel(sh_degree=0)
+        self.gaussians = GaussianModel(sh_degree=0)
         #TODO Keep gaussians, only update X_canon
-        self.valid_masks = {}
+        # self.valid_masks = {}
         num_keyframes = len(keyframes)
         for frame_idx in range(num_keyframes):
 
@@ -140,7 +140,7 @@ class GaussianOptimizer:
                         keyframe.get_average_conf().reshape(-1)
                         > c_conf_threshold
                     )
-            self.valid_masks[frame_idx] = valid
+            # self.valid_masks[frame_idx] = valid
             
             depth = einops.rearrange(keyframe.X_canon[:, -1], "(h w) -> h w", h=self.intrinsics["H"], w=self.intrinsics["W"])
             valid_image = einops.rearrange(valid, "(h w) -> h w", h=self.intrinsics["H"], w=self.intrinsics["W"])
@@ -162,41 +162,39 @@ class GaussianOptimizer:
             # if i == len(keyframes):
             # print("add points to gaussians")
 
-            if keyframe.frame_id not in self.keyframes:
-                # valid = np.ones_like(valid, dtype=bool)
-                scales_new = (keyframe.T_WC.data[0,-1] * keyframe.scales)
-                opacities_new = keyframe.opacities
-                w_rotations = quat_mult(keyframe.T_WC.data, keyframe.rotations)
-                w_means = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets)
+            # valid = np.ones_like(valid, dtype=bool)
+            scales_new = (keyframe.T_WC.data[0,-1] * keyframe.scales)
+            opacities_new = keyframe.opacities
+            w_rotations = quat_mult(keyframe.T_WC.data, keyframe.rotations)
+            w_means = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets)
 
-                if self.config["gaussians"]["l1_mask"] and frame_idx > 0:
-                    render_pkg = render(self.viewpoint_stack[frame_idx], self.gaussians, self.pipeline_params, self.background)
-                    image = render_pkg["render"]
-                    # ssim_loss_val = ssim(image, self.viewpoint_stack[frame_idx].original_image)
-                    # l1_loss_val = l1_loss(image, self.viewpoint_stack[frame_idx].original_image)
-                    l1_threshold = self.config["gaussians"]["l1_threshold"]
-                    l1_loss_img = torch.abs(image - self.viewpoint_stack[frame_idx].original_image).mean(dim=0).reshape(-1)
-                    l1_mask = valid * (l1_loss_img > l1_threshold)
-                    # print(f"l1_loss_mask shape reshaped {l1_loss_mask.shape}")
-                    print(f"l1_mask shape {l1_mask.shape}, l1_mask sum {l1_mask.sum()}")
-                    self.gaussians.add_points(
-                        new_xyz=w_means[l1_mask],
-                        new_features_dc=keyframe.SH[l1_mask],
-                        new_opacities=opacities_new[l1_mask],
-                        new_scales=scales_new[l1_mask],
-                        new_rotations=w_rotations[l1_mask]
-                    )
-                else:
-                    print(f"adding {valid.sum()} points to gaussians")
-                    self.gaussians.add_points(
-                        new_xyz=w_means[valid],
-                        new_features_dc=keyframe.SH[valid],
-                        new_opacities=opacities_new[valid],
-                        new_scales=scales_new[valid],
-                        new_rotations=w_rotations[valid]
-                    )
+            if self.config["gaussians"]["l1_mask"] and frame_idx not in self.valid_masks.keys() and frame_idx > 0:
+                print(f"get l1 mask for frame {frame_idx}")
+                render_pkg = render(self.viewpoint_stack[frame_idx], self.gaussians, self.pipeline_params, self.background)
+                image = render_pkg["render"]
+                # ssim_loss_val = ssim(image, self.viewpoint_stack[frame_idx].original_image)
+                # l1_loss_val = l1_loss(image, self.viewpoint_stack[frame_idx].original_image)
+                l1_threshold = self.config["gaussians"]["l1_threshold"]
+                l1_loss_img = torch.abs(image - self.viewpoint_stack[frame_idx].original_image).mean(dim=0).reshape(-1)
+                l1_mask = valid * (l1_loss_img > l1_threshold)
+                self.valid_masks[frame_idx] = l1_mask
+                # print(f"l1_loss_mask shape reshaped {l1_loss_mask.shape}")
+                # print(f"l1_mask shape {l1_mask.shape}, l1_mask sum {l1_mask.sum()}")
+            elif frame_idx == 0 and frame_idx not in self.valid_masks.keys():
+                self.valid_masks[frame_idx] = valid
+            print(f"valid mask {self.valid_masks.keys()}")
 
-                self.keyframes.append(keyframe.frame_id)
+            valid = self.valid_masks[frame_idx]
+            print(f"adding {valid.sum()} points to gaussians")
+            self.gaussians.add_points(
+                new_xyz=w_means[valid],
+                new_features_dc=keyframe.SH[valid],
+                new_opacities=opacities_new[valid],
+                new_scales=scales_new[valid],
+                new_rotations=w_rotations[valid]
+            )
+
+            # self.keyframes.append(keyframe.frame_id)
             # self.gaussians.load_ply("/home/curdinst/repos/MASt3R-SLAM/logs/rgbd_dataset_freiburg1_desk_2025-04-17_09-48-43_wa.ply")
             # print(f"num_gaussians: {self.gaussians._xyz.shape}")
             # break
@@ -283,13 +281,13 @@ class GaussianOptimizer:
                     plt.savefig(path / f"render_{frame_index}.png")
                     plt.close()
                 
-                if not save_results:
-                    loss_mapping.backward()
-                    with torch.no_grad():
-                        self.gaussians.optimizer.step()
-                        self.gaussians.optimizer.zero_grad(set_to_none=True)
-                        self.gaussians.update_learning_rate(i)
-                        loss_mapping = 0
+            if not save_results:
+                loss_mapping.backward()
+                with torch.no_grad():
+                    self.gaussians.optimizer.step()
+                    self.gaussians.optimizer.zero_grad(set_to_none=True)
+                    self.gaussians.update_learning_rate(i)
+                    loss_mapping = 0
             iteration_time = time.time() - time_now
             if i%10 == 0:
                 print(f"iteration {i} took {iteration_time:.4f} seconds")
@@ -297,46 +295,46 @@ class GaussianOptimizer:
             self.draw_cameras()
 
         # Overwrite
-        # idx = 0
+        idx = 0
         # for frame_idx in range(num_keyframes):
         # num_valid_list = [valid.sum().item() for valid in self.valid_masks.values()]
         # gauss_indices = [sum(num_valid_list[:i]) for i in range(len(num_valid_list)+1)]
         # print(f"num_valid_list {num_valid_list}, \ngauss_indices {gauss_indices}")
-        # for frame_idx in range(num_keyframes):
-        #     valid = self.valid_masks[frame_idx]
-        #     num_valid = valid.sum()
-        #     # print(f"num gaussians {self.gaussians._xyz.shape}, num_valid {num_valid}")
-        #     # print(f"num_valid: {num_valid} a {self.gaussians._xyz[idx:idx+num_valid].shape}, b {keyframes[frame_idx].X_canon[valid].shape}")
-        #     idx_0, idx_1 = gauss_indices[frame_idx], gauss_indices[frame_idx + 1]
+        for frame_idx in range(num_keyframes):
+            valid = self.valid_masks[frame_idx]
+            num_valid = valid.sum()
+            # print(f"num gaussians {self.gaussians._xyz.shape}, num_valid {num_valid}")
+            # print(f"num_valid: {num_valid} a {self.gaussians._xyz[idx:idx+num_valid].shape}, b {keyframes[frame_idx].X_canon[valid].shape}")
+            # idx_0, idx_1 = gauss_indices[frame_idx], gauss_indices[frame_idx + 1]
             
-        #     keyframe = keyframes[frame_idx]
-        #     if num_keyframes > 1 and frame_idx == num_keyframes -1 and self.config["gaussians"]["pre_pose_optimization"]:
-        #         R_CW = self.viewpoint_stack[frame_idx].R
-        #         T_CW = self.viewpoint_stack[frame_idx].T
-        #         T_WC = - R_CW.T @ T_CW
-        #         quat_WC = torch.from_numpy(R.from_matrix(R_CW.T.cpu().numpy()).as_quat()).to(device=self.device)
-        #         print(f"old quat {keyframe.T_WC.data[0,3:7]}, new quat {quat_WC}")
-        #         print(f"old T {keyframe.T_WC.data[0,:3]}, new T {self.viewpoint_stack[frame_idx].T}")
-        #         keyframe.T_WC.data[0,3:7] = quat_WC
-        #         keyframe.T_WC.data[0,:3] = T_WC
-        #     T_CW = keyframe.T_WC.inv()
-        #     # print(f"T_WC {keyframe.T_WC.data}")
-        #     # print(f"T_CW {T_CW.data}")
-        #     scales_w = torch.exp(self.gaussians._scaling[idx:idx+num_valid]) * T_CW.data[0,-1]
-        #     rotations_w = self.gaussians._rotation[idx:idx+num_valid]
-        #     rotations_kf = quat_mult(T_CW.data, rotations_w)
-        #     means_w = T_CW.act(self.gaussians._xyz[idx:idx+num_valid])
+            keyframe = keyframes[frame_idx]
+            if num_keyframes > 1 and frame_idx == num_keyframes -1 and self.config["gaussians"]["pre_pose_optimization"]:
+                R_CW = self.viewpoint_stack[frame_idx].R
+                T_CW = self.viewpoint_stack[frame_idx].T
+                T_WC = - R_CW.T @ T_CW
+                quat_WC = torch.from_numpy(R.from_matrix(R_CW.T.cpu().numpy()).as_quat()).to(device=self.device)
+                print(f"old quat {keyframe.T_WC.data[0,3:7]}, new quat {quat_WC}")
+                print(f"old T {keyframe.T_WC.data[0,:3]}, new T {self.viewpoint_stack[frame_idx].T}")
+                keyframe.T_WC.data[0,3:7] = quat_WC
+                keyframe.T_WC.data[0,:3] = T_WC
+            T_CW = keyframe.T_WC.inv()
+            # print(f"T_WC {keyframe.T_WC.data}")
+            # print(f"T_CW {T_CW.data}")
+            scales_w = torch.exp(self.gaussians._scaling[idx:idx+num_valid]) * T_CW.data[0,-1]
+            rotations_w = self.gaussians._rotation[idx:idx+num_valid]
+            rotations_kf = quat_mult(T_CW.data, rotations_w)
+            means_w = T_CW.act(self.gaussians._xyz[idx:idx+num_valid])
 
             # print("scaling:", self.gaussians._scaling[idx:idx+num_valid])
             # print("scales kf :", keyframes[frame_idx].scales)
-            # keyframe.update_gaussians(
-            #     valid_mask=valid,
-            #     scale=scales_w,
-            #     rotation=rotations_kf,
-            #     SH=einops.rearrange(self.gaussians._features_dc[idx:idx+num_valid], "wh d c -> wh c d"),
-            #     opacity=self.gaussians._opacity[idx:idx+num_valid],
-            #     mean=means_w,
-            # )
+            keyframe.update_gaussians(
+                valid_mask=valid,
+                scale=scales_w,
+                rotation=rotations_kf,
+                SH=einops.rearrange(self.gaussians._features_dc[idx:idx+num_valid], "wh d c -> wh c d"),
+                opacity=self.gaussians._opacity[idx:idx+num_valid],
+                mean=means_w,
+            )
             
             # keyframe.update_gaussians(
             #     valid_mask=valid,
@@ -346,7 +344,7 @@ class GaussianOptimizer:
             #     opacity=self.gaussians._opacity[idx_0:idx_1],
             #     mean=self.gaussians._xyz[idx_0:idx_1],
             # )
-            # keyframes[frame_idx] = keyframe
+            keyframes[frame_idx] = keyframe
         
             # X_canon = keyframes[frame_idx].X_canon[valid].clone()
             # keyframes.update_gaussians(
@@ -363,7 +361,7 @@ class GaussianOptimizer:
             # keyframes[frame_idx].SH[valid] = einops.rearrange(self.gaussians._features_dc[idx:idx+num_valid], "wh d c -> wh c d").clone()
             # keyframes[frame_idx].scales[valid] = self.gaussians._scaling[idx:idx+num_valid].clone()
             # keyframes[frame_idx].opacities[valid] = self.gaussians._opacity[idx:idx+num_valid].clone()
-            # idx += num_valid
+            idx += num_valid
         # print(f"updated gaussians of {num_keyframes} keyframes")
         if save_results:
             for kf_idx in range(num_keyframes):
