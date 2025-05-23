@@ -107,13 +107,11 @@ class GaussianOptimizer:
         self.valid_masks = {}
         num_keyframes = len(keyframes)
         for frame_idx in range(num_keyframes):
-            print(f"Num gaussians {self.gaussians._xyz.shape[0]:,}")
 
-        # for idx in range(2):
             keyframe = keyframes[frame_idx]
             # print(f"viewpoint_stack.keys() {self.viewpoint_stack.keys()}")
             # if frame_idx in self.viewpoint_stack.keys(): continue
-            print(f"Adding viewpoint for keyframe {keyframe.frame_id}")
+            # print(f"Adding viewpoint for keyframe {keyframe.frame_id}")
             # gt_color, gt_depth, gt_pose = dataset[keyframe.frame_id]
             viewpoint = Camera(
                 keyframe.frame_id,
@@ -171,18 +169,38 @@ class GaussianOptimizer:
                 w_rotations = quat_mult(keyframe.T_WC.data, keyframe.rotations)
                 w_means = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets)
 
-                print(f"adding {valid.sum()} points to gaussians")
-                self.gaussians.add_points(
-                    new_xyz=w_means[valid],
-                    new_features_dc=keyframe.SH[valid],
-                    new_opacities=opacities_new[valid],
-                    new_scales=scales_new[valid],
-                    new_rotations=w_rotations[valid]
-                )
+                if self.config["gaussians"]["l1_mask"] and frame_idx > 0:
+                    render_pkg = render(self.viewpoint_stack[frame_idx], self.gaussians, self.pipeline_params, self.background)
+                    image = render_pkg["render"]
+                    # ssim_loss_val = ssim(image, self.viewpoint_stack[frame_idx].original_image)
+                    # l1_loss_val = l1_loss(image, self.viewpoint_stack[frame_idx].original_image)
+                    l1_threshold = self.config["gaussians"]["l1_threshold"]
+                    l1_loss_img = torch.abs(image - self.viewpoint_stack[frame_idx].original_image).mean(dim=0).reshape(-1)
+                    l1_mask = valid * (l1_loss_img > l1_threshold)
+                    # print(f"l1_loss_mask shape reshaped {l1_loss_mask.shape}")
+                    print(f"l1_mask shape {l1_mask.shape}, l1_mask sum {l1_mask.sum()}")
+                    self.gaussians.add_points(
+                        new_xyz=w_means[l1_mask],
+                        new_features_dc=keyframe.SH[l1_mask],
+                        new_opacities=opacities_new[l1_mask],
+                        new_scales=scales_new[l1_mask],
+                        new_rotations=w_rotations[l1_mask]
+                    )
+                else:
+                    print(f"adding {valid.sum()} points to gaussians")
+                    self.gaussians.add_points(
+                        new_xyz=w_means[valid],
+                        new_features_dc=keyframe.SH[valid],
+                        new_opacities=opacities_new[valid],
+                        new_scales=scales_new[valid],
+                        new_rotations=w_rotations[valid]
+                    )
+
                 self.keyframes.append(keyframe.frame_id)
             # self.gaussians.load_ply("/home/curdinst/repos/MASt3R-SLAM/logs/rgbd_dataset_freiburg1_desk_2025-04-17_09-48-43_wa.ply")
-            print(f"num_gaussians: {self.gaussians._xyz.shape}")
+            # print(f"num_gaussians: {self.gaussians._xyz.shape}")
             # break
+        print(f"Num gaussians {self.gaussians._xyz.shape[0]:,}")
         
         # render_pkg = render(viewpoint, self.gaussians, self.pipeline_params, self.background)
         # image = render_pkg["render"]
@@ -193,31 +211,34 @@ class GaussianOptimizer:
         self.gaussians.init_lr(self.init_lr)
         self.gaussians.training_setup(self.opt_params)
         #         break
+        add_random_frames = False
         if self.window_size == 1 and not save_results:
             optimisation_window = [num_keyframes - 1]
         elif num_keyframes > 2 and not save_results:
-            optimisation_window = [num_keyframes - 2, num_keyframes - 1]
-            rest_view_idxs = list(range(num_keyframes - 2))
-            random.shuffle(rest_view_idxs)
-            optimisation_window += rest_view_idxs[:self.window_size-2]
+            add_random_frames = True   
         else:
             optimisation_window = list(range(num_keyframes))
         # optimisation_window = list(range(num_keyframes))
         self.rendering_vals = {}
-        print(f"optimisation_window {optimisation_window}")
-        if not save_results:
-            for frame_idx in optimisation_window:
-                if frame_idx in self.N_optimized_kf_gaussians.keys() and iters > 0:
-                    self.N_optimized_kf_gaussians[frame_idx] += 1
-                elif iters == 0:
-                    self.N_optimized_kf_gaussians[frame_idx] = 0
-                else:
-                    self.N_optimized_kf_gaussians[frame_idx] = 1
+        
         for i in range(iters):
             self.iteration_count += 1
             loss_mapping = 0
             n_touched_acm = []
             time_now = time.time()
+            if add_random_frames:
+                optimisation_window = [num_keyframes - 2, num_keyframes - 1]
+                rest_view_idxs = list(range(num_keyframes - 2))
+                random.shuffle(rest_view_idxs)
+                optimisation_window += rest_view_idxs[:self.window_size-2]
+            if not save_results:
+                for frame_idx in optimisation_window:
+                    if frame_idx in self.N_optimized_kf_gaussians.keys() and iters > 0:
+                        self.N_optimized_kf_gaussians[frame_idx] += 1
+                    elif iters == 0:
+                        self.N_optimized_kf_gaussians[frame_idx] = 0
+                    else:
+                        self.N_optimized_kf_gaussians[frame_idx] = 1
             # for frame_index in range(num_keyframes):
             for frame_index in optimisation_window:
             # for frame_index in range(2):
@@ -250,7 +271,7 @@ class GaussianOptimizer:
                 if save_plot:
                     image_rearranged = einops.rearrange(image.cpu().detach().numpy(), "c h w -> h w c")
                     plt.figure()
-                    plt.title(f"frame_index {frame_index} iteration {i} SSIM {round(ssim_loss_val.item(), 3)} L1 {round(l1_loss_val.item(), 3)}")
+                    plt.title(f"frame_index {frame_index} iteration {i} PSNR {round(psnr_val.item(), 3)}")
                     plt.axis("off")
                     # plt.subplot(1, 2, 1)
                     a,b = np.min(image_rearranged), np.max(image_rearranged)
@@ -302,7 +323,7 @@ class GaussianOptimizer:
                                 self.initialized = True
                             # # make sure we don't split the gaussians, break here.
                         # return False
-                    if num_keyframes > 1 and (i == 10 or i == 20):
+                    if num_keyframes > 1 and (i in self.config["gaussians"]["densify_at_it_nr"]):
                         print(f"num_gaussians {self.gaussians._xyz.shape}")
                         self.gaussians.densify_and_prune(
                             self.opt_params.densify_grad_threshold,

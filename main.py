@@ -92,7 +92,7 @@ def run_gaussian_optimization(cfg, dataset, model, states: SharedStates, keyfram
             continue
         len_frames = len(keyframes)
         # print("new frame", new_frame)
-        if len_frames == len_frames_before or len_frames < 1:
+        if len_frames == len_frames_before or len_frames < 2: # Firs keyframe is from Mono inference
             time.sleep(0.01)
             continue
         print("len frames", len_frames)
@@ -100,7 +100,7 @@ def run_gaussian_optimization(cfg, dataset, model, states: SharedStates, keyfram
 
         num_iterations = config["gaussians"]["num_iterations"]
         states.set_gauss_opt_frameid(len_frames - 2)
-        gaussian_optimizer.optimize(keyframes=keyframes, iters=num_iterations)
+        gaussian_optimizer.optimize(keyframes=keyframes, iters=num_iterations, path=savedir)
         states.set_gauss_opt_frameid(len_frames - 1)
 
     gaussian_optimizer.save_results(savedir, keyframes)
