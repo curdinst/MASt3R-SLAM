@@ -205,6 +205,7 @@ if __name__ == "__main__":
     save_dir = path / folder_name
     os.makedirs(save_dir, exist_ok=True)
     print(f"Saving to {save_dir}")
+    # config["tracking"]["save_dir"] = str(save_dir)
     shutil.copyfile("/home/curdinst/repos/MASt3R-SLAM/config/base.yaml", os.path.join(save_dir, "base.yaml"))
     shutil.copyfile("/home/curdinst/repos/MASt3R-SLAM/config/calib.yaml", os.path.join(save_dir, "calib.yaml"))
 
@@ -410,17 +411,17 @@ if __name__ == "__main__":
             dataset.timestamps,
             tracker.poses,
         )
-    save_gaussian_map = True
+    save_gaussian_map = False
     if save_gaussian_map:
-        save_dir, seq_name = eval.prepare_savedir(args, dataset)
+        # save_dir, seq_name = eval.prepare_savedir(args, dataset)
         # folder_name = timestamp + f"_{config['gaussians']['num_iterations']}_it"
-        file_name = seq_name + datetime_now_new + "_wa.ply"
-        # eval.save_gaussian_map(
-        #     savedir=savedir,
-        #     filename=file_name,
-        #     keyframes=keyframes,
-        #     c_conf_threshold=last_msg.C_conf_threshold,
-        # )
+        file_name = "gaussians_eval.ply"
+        eval.save_gaussian_map(
+            savedir=save_dir,
+            filename=file_name,
+            keyframes=keyframes,
+            c_conf_threshold=last_msg.C_conf_threshold,
+        )
 
     if save_frames:
         savedir = pathlib.Path(f"logs/frames/{datetime_now}")

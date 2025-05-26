@@ -1,4 +1,4 @@
-use_calib: True
+use_calib: False
 # used_dataset: "datasets/tum/rgbd_dataset_freiburg1_desk" # datasets/replica/office2
 used_dataset: "datasets/replica/office2"
 # used_dataset: "datasets/replica/office1"
@@ -11,15 +11,16 @@ run_backend: True
 run_gaussian_optimizer: True
 gaussians:
   init_lr: 0.05 #6.0
-  num_iterations: 50
+  num_iterations: 0
   window_size: 11 # 2 newest frames are subtracted -> window_size = 2 newest frames + N random frames
   tracking_itr_num: 100
   c_conf_threshold: 1.5
-  l1_mask: True
+  use_matching_mask: True
+  l1_mask: False
   l1_threshold: 0.1
   # densify_at_it_nr: [10, 20]
   pre_pose_optimization: False
-  post_pose_optimization: True
+  post_pose_optimization: False
   seed: 0
   pipeline_params:
     convert_SHs_python: False

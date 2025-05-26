@@ -700,7 +700,7 @@ class GaussianModel:
 
 
     def add_points(
-        self, new_xyz, new_features_dc, new_opacities, new_scales, new_rotations
+        self, new_xyz, new_features_dc, new_opacities, new_scales, new_rotations, device="cuda:0"
     ):
         # print(f"max sh degree: {self.max_sh_degree}")
         # self._xyz = torch.cat((self._xyz, new_xyz), dim=0)
@@ -731,13 +731,14 @@ class GaussianModel:
         # print(f"new_rotations: {new_rotations.shape}")
 
         self._xyz = nn.Parameter(
-            torch.cat((self._xyz, torch.tensor(new_xyz, dtype=torch.float, device="cuda")), dim=0).requires_grad_(True)
+            torch.cat((self._xyz, new_xyz.clone().detach().to(device=device).float().requires_grad_(True)), dim=0)
         )
         self._features_dc = nn.Parameter(
             torch.cat(
                 (
                     self._features_dc,
-                    torch.tensor(new_features_dc, dtype=torch.float, device="cuda")
+                    new_features_dc.clone().detach().to(device=device).requires_grad_(True).float()
+                    # torch.tensor(new_features_dc, dtype=torch.float, device="cuda")
                     .transpose(1, 2)
                     .contiguous()
                     .requires_grad_(True)
@@ -755,7 +756,8 @@ class GaussianModel:
             torch.cat(
                 (
                     self._features_rest,
-                    torch.tensor(features_extra, dtype=torch.float, device="cuda")
+                    # torch.tensor(features_extra, dtype=torch.float, device="cuda")
+                    torch.from_numpy(features_extra).to(device=device).float().requires_grad_(True)
                     .transpose(1, 2)
                     .contiguous()
                     .requires_grad_(True)
@@ -767,7 +769,8 @@ class GaussianModel:
             torch.cat(
                 (
                     self._opacity,
-                    torch.tensor(new_opacities, dtype=torch.float, device="cuda").requires_grad_(True)
+                    new_opacities.clone().detach().to(device=device).float().requires_grad_(True)
+                    # torch.tensor(new_opacities, dtype=torch.float, device="cuda").requires_grad_(True)
                 )
             , dim=0
             )
@@ -776,7 +779,8 @@ class GaussianModel:
             torch.cat(
                 (
                     self._scaling,
-                    torch.tensor(new_scales, dtype=torch.float, device="cuda").requires_grad_(True)
+                    new_scales.clone().detach().to(device=device).float().requires_grad_(True)
+                    # torch.tensor(new_scales, dtype=torch.float, device="cuda").requires_grad_(True)
                 )
             , dim=0
             )
@@ -785,13 +789,14 @@ class GaussianModel:
             torch.cat(
                 (
                     self._rotation,
-                    torch.tensor(new_rotations, dtype=torch.float, device="cuda").requires_grad_(True)
+                    new_rotations.clone().detach().to(device=device).float().requires_grad_(True)
+                    # torch.tensor(new_rotations, dtype=torch.float, device="cuda").requires_grad_(True)
                 )
             , dim=0
             )
         )
         self.active_sh_degree = self.max_sh_degree
-        self.max_radii2D = torch.zeros((self._xyz.shape[0]), device="cuda")
+        self.max_radii2D = torch.zeros((self._xyz.shape[0]), device=device)
         self.unique_kfIDs = torch.zeros((self._xyz.shape[0]))
         self.n_obs = torch.zeros((self._xyz.shape[0]), device="cpu").int()
 
