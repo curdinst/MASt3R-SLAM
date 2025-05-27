@@ -24,6 +24,7 @@ from mast3r_slam.geometry import constrain_points_to_ray, quat_mult
 from gaussian_splatting.utils.graphics_utils import focal2fov
 from gaussian_splatting.utils.pose_utils import update_pose
 from gaussian_splatting.utils.slam_utils import get_loss_tracking_rgb, get_loss_tracking_rgbd, get_loss_mapping_rgbd
+from gaussian_splatting.utils.general_utils import average_quaternion_pairs
 
 from matplotlib import pyplot as plt
 import pickle
@@ -105,6 +106,7 @@ class GaussianOptimizer:
         self.gaussians = GaussianModel(sh_degree=0)
         #TODO Keep gaussians, only update X_canon
         # self.valid_masks = {}
+        matching_gaussians = None
         num_keyframes = len(keyframes)
         for frame_idx in range(num_keyframes):
 
@@ -171,6 +173,38 @@ class GaussianOptimizer:
             opacities_new = keyframe.opacities
             w_rotations = quat_mult(keyframe.T_WC.data, keyframe.rotations)
             w_means = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets)
+            sh = keyframe.SH
+            if matching_gaussians is not None and self.config["gaussians"]["average_correspondances"]:
+                correspondance_mask = matching_gaussians[-1]
+                # invalid_indices = torch.where(~valid)
+                correspondance_mask_valid = valid[correspondance_mask]
+                print(f"correspondance_mask_valid shape {correspondance_mask_valid.shape}, correspondance_mask shape {correspondance_mask.shape}")
+                # means_before, features_dc_before, opacities_before, scales_before, rotations_before = matching_gaussians[:-1]
+                # means_before = means_before[correspondance_mask_valid]
+                # features_dc_before = features_dc_before[correspondance_mask_valid]
+                # opacities_before = opacities_before[correspondance_mask_valid]
+                # scales_before = scales_before[correspondance_mask_valid]
+                # rotations_before = rotations_before[correspondance_mask_valid]
+
+                # gaussians_before = (means_before, features_dc_before, opacities_before, scales_before, rotations_before)
+                # torch.zeros_like(valid, dtype=torch.bool)
+                # correspondance_mask[matching_gaussians[-1]] = True
+                # correspondance_mask = correspondance_mask & valid
+                gaussians_now = (
+                    w_means[correspondance_mask],
+                    sh[correspondance_mask],
+                    opacities_new[correspondance_mask],
+                    scales_new[correspondance_mask],
+                    w_rotations[correspondance_mask]
+                )
+                gaussians_avg = self.mean_gaussians(matching_gaussians[:-1], gaussians_now)
+                (
+                    w_means[correspondance_mask], 
+                    sh[correspondance_mask], 
+                    opacities_new[correspondance_mask], 
+                    scales_new[correspondance_mask], 
+                    w_rotations[correspondance_mask], 
+                ) = gaussians_avg
 
             if self.config["gaussians"]["l1_mask"] and frame_idx not in self.valid_masks.keys() and frame_idx > 0:
                 print(f"get l1 mask for frame {frame_idx}")
@@ -191,13 +225,22 @@ class GaussianOptimizer:
             if self.config["gaussians"]["use_matching_mask"] and frame_idx < num_keyframes - 1:
             # if self.config["gaussians"]["use_matching_mask"] and frame_idx != 0:
                 valid = self.valid_masks[frame_idx] & keyframe.gaussian_mask
-                self.valid_masks[frame_idx] = valid
+                # self.valid_masks[frame_idx] = valid
+                to_average = self.valid_masks[frame_idx] & ~keyframe.gaussian_mask
+                matching_gaussians = (
+                    w_means[to_average],
+                    sh[to_average],
+                    opacities_new[to_average],
+                    scales_new[to_average],
+                    w_rotations[to_average],
+                    keyframe.correspondance_mask[to_average]
+                )
             else:
                 valid = self.valid_masks[frame_idx]
             print(f"adding {valid.sum()} points to gaussians")
             self.gaussians.add_points(
                 new_xyz=w_means[valid],
-                new_features_dc=keyframe.SH[valid],
+                new_features_dc=sh[valid],
                 new_opacities=opacities_new[valid],
                 new_scales=scales_new[valid],
                 new_rotations=w_rotations[valid]
@@ -430,6 +473,37 @@ class GaussianOptimizer:
         # self.median_depth = get_median_depth(depth, opacity)
         return render_pkg
 
+    def mean_gaussians(self, gaussians_1, gaussians_2):
+        (means_1, features_dc_1, opacities_1, scales_1, rotations_1) = gaussians_1
+        (means_2, features_dc_2, opacities_2, scales_2, rotations_2) = gaussians_2
+        dists = torch.sqrt(((means_1 - means_2)**2).sum(dim=1))
+        mean_dists = torch.mean(dists)
+        print(f"mean diffs: {mean_dists}, max: {torch.max(dists)}, min: {torch.min(dists)}")
+        inlier_mask = dists < mean_dists
+        print(f"inlier_mask shape {inlier_mask.shape}, inlier_mask sum {inlier_mask.sum()}")
+        # inlier_mask = ~outliers_mask
+        
+        means_1[inlier_mask] = (means_1[inlier_mask] + means_2[inlier_mask]) / 2.0
+        features_dc_1[inlier_mask] = (features_dc_1[inlier_mask] + features_dc_2[inlier_mask]) / 2.0
+        opacities_1[inlier_mask] = (opacities_1[inlier_mask] + opacities_2[inlier_mask]) / 2.0
+        scales_1[inlier_mask] = (scales_1[inlier_mask] + scales_2[inlier_mask]) / 2.0
+        rotations_1[inlier_mask] = average_quaternion_pairs(rotations_1[inlier_mask], rotations_2[inlier_mask])
+
+        # take_1 = ~inlier_mask & valid_mask_1 
+        # means_1[take_1] = means_1[take_1]
+        # features_dc_1[take_1] = features_dc_1[take_1]
+        # opacities_1[take_1] = opacities_1[take_1]
+        # scales_1[take_1] = scales_1[take_1]
+        # rotations_1[take_1] = rotations_1[take_1]
+
+        # take_2 = ~inlier_mask & valid_mask_2 & ~valid_mask_1 # avoid double counting
+        # means_1[take_2] = means_2[take_2]
+        # features_dc_1[take_2] = features_dc_2[take_2]
+        # opacities_1[take_2] = opacities_2[take_2]
+        # scales_1[take_2] = scales_2[take_2]
+        # rotations_1[take_2] = rotations_2[take_2]
+
+        return (means_1, features_dc_1, opacities_1, scales_1, rotations_1)
 
 
     def draw_cameras(self):

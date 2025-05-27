@@ -801,6 +801,7 @@ class GaussianModel:
         self.n_obs = torch.zeros((self._xyz.shape[0]), device="cpu").int()
 
 
+
         def print_gaussians():
             print(f" GAussian model ==================================================0")
             print(f"activ: {self.active_sh_degree }")
@@ -838,17 +839,3 @@ class GaussianModel:
             print(f"n_obs: {self.n_obs.shape}")
 
             print(f" -------------------------------------------------------------")
-
-        # print_gaussians()
-        
-        # exit()
-        # print("self._xyz.shape", self._xyz.shape)
-        # print("self._features_dc.shape", self._features_dc.shape)
-        # print("self._features_rest.shape", self._features_rest.shape)
-        # print(f"num_gaussians: {self._xyz.shape}")
-        # print(f"sh shape       {self._features_rest.shape}")
-        # print(f"f rest         {self._features_rest}")
-        # print(f"f shape        {self._features_dc.shape}")
-        # print(f"rotation shape {self._rotation.shape}")
-        # print(f"opacity shape  {self._opacity.shape}")
-
