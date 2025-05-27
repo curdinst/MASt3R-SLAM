@@ -249,7 +249,6 @@ class GaussianOptimizer:
             # self.gaussians.load_ply("/home/curdinst/repos/MASt3R-SLAM/logs/rgbd_dataset_freiburg1_desk_2025-04-17_09-48-43_wa.ply")
             # print(f"num_gaussians: {self.gaussians._xyz.shape}")
             # break
-        print(f"Num gaussians 11  {self.gaussians._xyz.shape[0]:,}")
         
         # render_pkg = render(viewpoint, self.gaussians, self.pipeline_params, self.background)
         # image = render_pkg["render"]
@@ -344,7 +343,7 @@ class GaussianOptimizer:
                 print(f"iteration {i} took {iteration_time:.4f} seconds")
         if save_results:
             self.draw_cameras()
-        print(f"num gaussians 3333: {self.gaussians._xyz.shape[0]}")
+        # print(f"num gaussians 3333: {self.gaussians._xyz.shape[0]}")
 
         # Overwrite
         idx = 0
