@@ -28,6 +28,7 @@ class FactorGraph:
         self.K = K
 
     def add_factors(self, ii, jj, min_match_frac, is_reloc=False):
+        print(f"Adding factors: {ii} -> {jj}")
         kf_ii = [self.frames[idx] for idx in ii]
         kf_jj = [self.frames[idx] for idx in jj]
         feat_i = torch.cat([kf_i.feat for kf_i in kf_ii])
@@ -75,7 +76,7 @@ class FactorGraph:
 
         if invalid_edges.any() and is_reloc:
             return False
-
+        print(f"valid edges: {ii} -> {jj}, ")
         valid_edges = ~invalid_edges
         ii_tensor = ii_tensor[valid_edges]
         jj_tensor = jj_tensor[valid_edges]
@@ -85,6 +86,20 @@ class FactorGraph:
         valid_match_i = valid_match_i[valid_edges]
         Qj = Qj[valid_edges]
         Qi = Qi[valid_edges]
+        print(f"valid edges: {ii_tensor} -> {jj_tensor}")
+        edges = zip(ii_tensor.tolist(), jj_tensor.tolist())
+        # edges = sorted(edges, key=lambda x: x[0])
+        print(f"not sorted edges: {edges}")
+        print(f"valid_i shape {valid_i.shape}, valid_j shape {valid_j.shape}")
+        idx = 0
+        for (i, j) in edges:
+            kf = self.frames[i]
+            print(f"mask before: {kf.gaussian_mask.shape}, {kf.gaussian_mask.sum()}")
+            kf.gaussian_mask = kf.gaussian_mask & ~valid_i[idx].clone().detach().squeeze(-1)
+            print(f"mask after: {kf.gaussian_mask.shape}, {kf.gaussian_mask.sum()}")
+            self.frames[i] = kf
+            kf = self.frames[j]
+            idx += 1
 
         self.ii = torch.cat([self.ii, ii_tensor])
         self.jj = torch.cat([self.jj, jj_tensor])
@@ -94,6 +109,7 @@ class FactorGraph:
         self.valid_match_i = torch.cat([self.valid_match_i, valid_match_i])
         self.Q_ii2jj = torch.cat([self.Q_ii2jj, Qj])
         self.Q_jj2ii = torch.cat([self.Q_jj2ii, Qi])
+        print(f"edges all: {self.ii} -> {self.jj}")
 
         added_new_edges = valid_edges.sum() > 0
         return added_new_edges

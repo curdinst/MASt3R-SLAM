@@ -76,36 +76,6 @@ def relocalization(frame, keyframes, factor_graph, retrieval_database):
                 factor_graph.solve_GN_rays()
         return successful_loop_closure
 
-def run_gaussian_optimization(cfg, dataset, model, states: SharedStates, keyframes: SharedKeyframes, savedir):
-    set_global_config(cfg)
-    device = keyframes.device
-    # factor_graph = FactorGraph(model, keyframes, K, device)
-    retrieval_database = load_retriever(model)
-
-    gaussian_optimizer = GaussianOptimizer(config, dataset, device)
-    len_frames_before = 0
-    mode = states.get_mode()
-    while mode is not Mode.TERMINATED:
-        mode = states.get_mode()
-        if mode == Mode.INIT or states.is_paused():
-            time.sleep(0.01)
-            continue
-        len_frames = len(keyframes)
-        # print("new frame", new_frame)
-        if len_frames == len_frames_before or len_frames < 2: # Firs keyframe is from Mono inference
-            time.sleep(0.01)
-            continue
-        print("len frames", len_frames)
-        len_frames_before = len_frames
-
-        num_iterations = config["gaussians"]["num_iterations"]
-        states.set_gauss_opt_frameid(len_frames - 2)
-        gaussian_optimizer.optimize(keyframes=keyframes, iters=num_iterations, path=savedir)
-        states.set_gauss_opt_frameid(len_frames - 1)
-
-    gaussian_optimizer.save_results(savedir, keyframes)
-    return
-
 def run_backend(cfg, model, states, keyframes, K):
     set_global_config(cfg)
 
@@ -176,6 +146,35 @@ def run_backend(cfg, model, states, keyframes, K):
             if len(states.global_optimizer_tasks) > 0:
                 idx = states.global_optimizer_tasks.pop(0)
 
+def run_gaussian_optimization(cfg, dataset, model, states: SharedStates, keyframes: SharedKeyframes, savedir):
+    set_global_config(cfg)
+    device = keyframes.device
+    # factor_graph = FactorGraph(model, keyframes, K, device)
+    retrieval_database = load_retriever(model)
+
+    gaussian_optimizer = GaussianOptimizer(config, dataset, device)
+    len_frames_before = 0
+    mode = states.get_mode()
+    while mode is not Mode.TERMINATED:
+        mode = states.get_mode()
+        if mode == Mode.INIT or states.is_paused():
+            time.sleep(0.01)
+            continue
+        len_frames = len(keyframes)
+        # print("new frame", new_frame)
+        if len_frames == len_frames_before or len_frames < 2: # Firs keyframe is from Mono inference
+            time.sleep(0.01)
+            continue
+        print("len frames", len_frames)
+        len_frames_before = len_frames
+
+        num_iterations = config["gaussians"]["num_iterations"]
+        states.set_gauss_opt_frameid(len_frames - 2)
+        gaussian_optimizer.optimize(keyframes=keyframes, iters=num_iterations, path=savedir)
+        states.set_gauss_opt_frameid(len_frames - 1)
+
+    gaussian_optimizer.save_results(savedir, keyframes)
+    return
 
 if __name__ == "__main__":
     mp.set_start_method("spawn")
