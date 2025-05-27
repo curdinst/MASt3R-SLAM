@@ -57,6 +57,22 @@ def build_covariance(scale, rotation_xyzw):
     # TODO: Check if the quaternion should be normalized!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!¨
     rotation_xyzw = F.normalize(rotation_xyzw, dim=-1)
     rotation = quaternion_to_matrix(rotation_xyzw)
+
+    # Validate that the rotation matrix is orthonormal
+    identity_check = torch.allclose(
+        rotation.transpose(-1, -2) @ rotation, 
+        torch.eye(3, device=rotation.device, dtype=rotation.dtype).expand_as(rotation),
+        atol=1e-6
+    )
+    determinant_check = torch.allclose(
+        torch.linalg.det(rotation), 
+        torch.ones(rotation.shape[:-2], device=rotation.device, dtype=rotation.dtype),
+        atol=1e-6
+    )
+    if not (identity_check and determinant_check):
+        raise ValueError(f"The rotation matrix is not orthonormal, identity_check: {identity_check}, determinant_check: {determinant_check}.")
+    else:
+        print("The rotation matrix is orthonormal.")
     return (
         rotation
         @ scale

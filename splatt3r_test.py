@@ -46,8 +46,8 @@ from torchvision.utils import save_image
 
 
 reduced = True
-grad_threshold = 100000
-scale_factor = 0.8
+grad_threshold = 0.2
+scale_factor = 1.0
 save_ply = True
 
 
@@ -172,6 +172,57 @@ def average_quaternions(quaternions):
     avg_quaternion = eigvecs[..., -1]  # (..., 4)
     return avg_quaternion
 
+def covariance_to_quaternion_and_scale(covariance):
+        '''Convert the covariance matrix to a four dimensional quaternion and
+        a three dimensional scale vector'''
+
+        # Perform singular value decomposition
+        # U, S, V = torch.linalg.svd(covariance)
+        S, U = torch.linalg.eig(covariance)
+        S = S.real
+        U = U.real
+        print(f"S: \n{S}, U: \n{U}")
+        # Take the real part of S and U
+        rotation = U
+        identity_check = torch.allclose(
+        rotation.transpose(-1, -2) @ rotation, 
+        torch.eye(3, device=rotation.device, dtype=rotation.dtype).expand_as(rotation),
+        atol=1e-6
+        )
+        determinant_check = torch.allclose(
+            torch.linalg.det(rotation), 
+            torch.ones(rotation.shape[:-2], device=rotation.device, dtype=rotation.dtype),
+            atol=1e-6
+        )
+        print(f"The rotation matrix is not orthonormal, identity_check: {identity_check}, determinant_check: {determinant_check}, det: {torch.linalg.det(rotation)}.")
+        # if not (identity_check and determinant_check):
+        #     raise ValueError(f"The rotation matrix is not orthonormal, identity_check: {identity_check}, determinant_check: {determinant_check}, det: {torch.linalg.det(rotation)}.")
+        # else:
+        #     print("The rotation matrix is orthonormal.")
+
+        # Swap eigenvalue positions and adjust U to ensure determinant of 1
+        negative_determinants = torch.linalg.det(U) < 0
+        U[negative_determinants,..., -1] = -U[negative_determinants,..., -1]
+        # print(F"U shape: {U.shape}, S shape: {S.shape}, V shape: {V.shape}")
+
+        # The scale factors are the square roots of the eigenvalues
+        scale = torch.sqrt(S)
+
+        # The rotation matrix is U*Vt
+        # rotation_matrix = torch.bmm(U, V.transpose(-2, -1))
+        rotation_matrix = U
+        rotation_matrix_np = rotation_matrix.detach().cpu().numpy()
+
+        # print(f"covariance: {covariance[0,...]}")
+        # print(f"RSStRt: {torch.bmm(torch.bmm(rotation_matrix,scale.diag_embed()),scale.diag_embed().transpose(-2, -1))}")
+
+        # Use scipy to convert the rotation matrix to a quaternion
+        rotation = Rotation.from_matrix(rotation_matrix_np)
+        quaternion = rotation.as_quat()
+        quaternion = torch.from_numpy(quaternion).to(device)
+
+        return quaternion, scale
+
 print(f"frame1 img shape: {frame1.img.shape}")
 image1 = einops.rearrange(frame1.img, "b c h w ->(b c) h w")
 image1 = image1*0.5 + 0.5
@@ -230,7 +281,7 @@ print(f"u shape: {u.shape}, v shape: {v.shape}")
 # fused_means = ((val0 + val1 + val2 + val3) / 4.0)
 fused_means = (means[:, u, v] + means[:, u, v+1] + means[:, u+1, v] + means[:, u+1, v+1]) / 4.0
 fused_opacities = (opacities[:, u, v] + opacities[:, u, v+1] + opacities[:, u+1, v] + opacities[:, u+1, v+1]) / 4.0
-fused_covariances = (covariances[u, v, ...] + covariances[u, v+1, ...] + covariances[u+1, v, ...] + covariances[u+1, v+1, ...]) * 0.25
+fused_covariances = (covariances[u, v, ...] + covariances[u, v+1, ...] + covariances[u+1, v, ...] + covariances[u+1, v+1, ...]) * scale_factor
 fused_sh = (spherical_harmonics[:, u, v] + spherical_harmonics[:, u, v+1] + spherical_harmonics[:, u+1, v] + spherical_harmonics[:, u+1, v+1]) / 4.0
 fused_scales = (scales[:, u, v] + scales[:, u, v+1] + scales[:, u+1, v] + scales[:, u+1, v+1]) * scale_factor
 quat1, quat2, quat3, quat4 = rotations[:, u, v], rotations[:, u, v+1], rotations[:, u+1, v], rotations[:, u+1, v+1]
@@ -287,6 +338,11 @@ reduced_rotations = torch.cat((fused_rotations, original_rotations), dim=0)
 num_gaussians = reduced_means.shape[0]
 num_gaussians_original = Xii.shape[0]
 # save_as_ply(pred1, pred1, recon_file)
+print(f"SHii shape: {SHii.shape}")
+reduced_sh = einops.rearrange(reduced_sh, "n c -> n c 1")
+print(f"reduced_sh shape: {reduced_sh.shape}")
+print(f"reduced_covariances shape: {reduced_covariances.shape}")
+reduced_rotations, reduced_scales = covariance_to_quaternion_and_scale(reduced_covariances)
 
 input_imgs = f"_frame_{img1_idx}_{img2_idx}"
 reduced_name = f"gaussians_reduced_th_{grad_threshold}_covf_{scale_factor}_n_{num_gaussians}" if reduced else f"gaussians_original_n_{num_gaussians_original}"
@@ -322,50 +378,20 @@ elif save_ply:
 
 print("predctions done")
 
-def covariance_to_quaternion_and_scale(covariance):
-        '''Convert the covariance matrix to a four dimensional quaternion and
-        a three dimensional scale vector'''
 
-        # Perform singular value decomposition
-        # U, S, V = torch.linalg.svd(covariance)
-        S, U = torch.linalg.eig(covariance)
 
-        # print(F"U shape: {U.shape}, S shape: {S.shape}, V shape: {V.shape}")
-
-        # The scale factors are the square roots of the eigenvalues
-        scale = torch.sqrt(S)
-
-        # The rotation matrix is U*Vt
-        # rotation_matrix = torch.bmm(U, V.transpose(-2, -1))
-        rotation_matrix = U
-        rotation_matrix_np = rotation_matrix.detach().cpu().numpy()
-
-        # print(f"covariance: {covariance[0,...]}")
-        # print(f"RSStRt: {torch.bmm(torch.bmm(rotation_matrix,scale.diag_embed()),scale.diag_embed().transpose(-2, -1))}")
-
-        # Use scipy to convert the rotation matrix to a quaternion
-        rotation = Rotation.from_matrix(rotation_matrix_np)
-        quaternion = rotation.as_quat()
-        quaternion = torch.from_numpy(quaternion).to(device)
-
-        return quaternion, scale
-
-example_rot = torch.tensor([[0.3152946438, 0.5, 0.7, 0.1]], device=device)
-example_scale = torch.tensor([[1.0, 2.0, 3.0]], device=device)
-example_cov = geometry.build_covariance(example_scale, example_rot)
-ret_rot, ret_scale = covariance_to_quaternion_and_scale(example_cov)
-example_cov = geometry.build_covariance(ret_scale.float(), ret_rot.float())
-ret_rot, ret_scale = covariance_to_quaternion_and_scale(example_cov)
-ret_rot, ret_scale = geometry.inverse_build_covariance_torch(example_cov)
-print(f"ret_rot: {ret_rot}")
-print(f"ret_scale: {ret_scale}")
+# example_rot = torch.tensor([[0.3152946438, 0.5, 0.7, 0.1]], device=device)
+# example_scale = torch.tensor([[1.0, 2.0, 3.0]], device=device)
+# example_cov = geometry.build_covariance(example_scale, example_rot)
+# ret_rot, ret_scale = covariance_to_quaternion_and_scale(example_cov)
+# # example_cov = geometry.build_covariance(ret_scale.float(), ret_rot.float())
+# # ret_rot, ret_scale = covariance_to_quaternion_and_scale(example_cov)
+# # ret_rot, ret_scale = geometry.inverse_build_covariance_torch(example_cov)
+# print(f"ret_rot: {ret_rot}")
+# print(f"ret_scale: {ret_scale}")
 # exit()
 
-print(f"SHii shape: {SHii.shape}")
-reduced_sh = einops.rearrange(reduced_sh, "n c -> n c 1")
-print(f"reduced_sh shape: {reduced_sh.shape}")
-print(f"reduced_covariances shape: {reduced_covariances.shape}")
-reduced_rotations, reduced_scales = covariance_to_quaternion_and_scale(reduced_covariances)
+
 # reduced_rotations, reduced_scales = Rii, Sii
 gaussians = GaussianModel(sh_degree=0)
 if not reduced:
