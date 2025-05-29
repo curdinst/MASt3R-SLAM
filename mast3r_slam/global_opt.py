@@ -72,12 +72,15 @@ class FactorGraph:
         # NOTE: Saying we need both edge directions to be above thrhreshold to accept either
         invalid_edges = torch.minimum(match_frac_j, match_frac_i) < min_match_frac
         consecutive_edges = ii_tensor == (jj_tensor - 1)
+        print(f"consecutive edges: {consecutive_edges}")
+        print(f"invalid edges: {invalid_edges}")
         invalid_edges = (~consecutive_edges) & invalid_edges
 
         if invalid_edges.any() and is_reloc:
             return False
-        print(f"valid edges: {ii} -> {jj}, ")
+        print(f"All edges: {ii} -> {jj}, ")
         valid_edges = ~invalid_edges
+        print(f"valid edges: {valid_edges}")
         ii_tensor = ii_tensor[valid_edges]
         jj_tensor = jj_tensor[valid_edges]
         idx_i2j = idx_i2j[valid_edges]

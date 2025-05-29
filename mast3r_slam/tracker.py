@@ -57,9 +57,9 @@ class FrameTracker:
 
         Qk = torch.sqrt(Qff[idx_f2k] * Qkf)
         (Sff, Rff, SHff, Off, Mff, Skf, Rkf, SHkf, Okf, Mkf) = gaussian_params
-        print(f"x_mean: {Xff}, M_mean: {Mff}")
-        offset_ff = torch.sqrt(((Mff-Xff)**2).sum(dim=-1))
-        print(f"offset max, min, mean {offset_ff.max()} {offset_ff.min()} {offset_ff.mean()}")
+        # print(f"x_mean: {Xff}, M_mean: {Mff}")
+        # offset_ff = torch.sqrt(((Mff-Xff)**2).sum(dim=-1))
+        # print(f"offset max, min, mean {offset_ff.max()} {offset_ff.min()} {offset_ff.mean()}")
         # print(f" Off max {Off.max()} min {Off.min()}, Off mean {Off.mean(dim=0)}")
         # Update keyframe pointmap after registration (need pose)
         frame.update_pointmap(Xff, Cff, Sff, Rff, SHff, Off, Mff)

@@ -114,6 +114,7 @@ def save_gaussian_map(savedir, filename, keyframes, c_conf_threshold):
         w_rotations = quat_mult(keyframe.T_WC.data, keyframe.rotations).cpu().numpy()
         # w_rotations = keyframe.rotations.cpu().numpy()
         rotations_new = w_rotations
+        print(f"keyframe.offsets mean: {keyframe.offsets.mean()}, min {keyframe.offsets.min()}, max {keyframe.offsets.max()}")
         w_means = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets).cpu().numpy()
         means_new = w_means
         print(f"shape of kf conf: {keyframe.get_average_conf().cpu().numpy().astype(np.float32).shape}")
@@ -123,7 +124,7 @@ def save_gaussian_map(savedir, filename, keyframes, c_conf_threshold):
         )
         valid_tensor = torch.tensor(valid, dtype=torch.bool)
         valid_tensor = valid_tensor & keyframe.gaussian_mask.clone().detach().to(device="cpu")
-        torch.save(valid_tensor, masks_dir / f"{keyframe.frame_id}.pt")
+        # torch.save(valid_tensor, masks_dir / f"{keyframe.frame_id}.pt")
         rotations.append(rotations_new[valid])
         scales.append(scales_new[valid])
         means.append(means_new[valid])
