@@ -75,6 +75,7 @@ def save_reconstruction(savedir, filename, keyframes, c_conf_threshold):
     for i in range(len(keyframes)):
         keyframe = keyframes[i]
         if config["use_calib"]:
+            print("USING CLAIB")
             X_canon = constrain_points_to_ray(
                 keyframe.img_shape.flatten()[:2], keyframe.X_canon[None], keyframe.K
             )
@@ -91,8 +92,9 @@ def save_reconstruction(savedir, filename, keyframes, c_conf_threshold):
     colors = np.concatenate(colors, axis=0)
 
     save_ply(savedir / filename, pointclouds, colors)
+    return pointclouds, colors
 
-def save_gaussian_map(savedir, filename, keyframes, c_conf_threshold):
+def save_gaussian_map(savedir, filename, keyframes, c_conf_threshold, pointclouds, colors):
     savedir = pathlib.Path(savedir)
     savedir.mkdir(exist_ok=True, parents=True)
     masks_dir = savedir / f"masks_{filename[:-4]}"
@@ -107,6 +109,8 @@ def save_gaussian_map(savedir, filename, keyframes, c_conf_threshold):
             continue
         keyframe_ids.append(keyframe.frame_id)
         # print(f"Keyframe {keyframe.frame_id} has SH, saving.")
+        pW = keyframe.T_WC.act(keyframe.X_canon).cpu().numpy().reshape(-1, 3)
+        means_new = pW
         sh_resized = einops.rearrange(keyframe.SH, "hw c d -> hw (c d)")
         sh_new = sh_resized.cpu().numpy()
         scales_new = (keyframe.T_WC.data[0,-1] * keyframe.scales).cpu().numpy()
@@ -116,12 +120,13 @@ def save_gaussian_map(savedir, filename, keyframes, c_conf_threshold):
         rotations_new = w_rotations
         print(f"keyframe.offsets mean: {keyframe.offsets.mean()}, min {keyframe.offsets.min()}, max {keyframe.offsets.max()}")
         w_means = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets).cpu().numpy()
-        means_new = w_means
+
         print(f"shape of kf conf: {keyframe.get_average_conf().cpu().numpy().astype(np.float32).shape}")
         valid = (
             keyframe.get_average_conf().cpu().numpy().astype(np.float32).reshape(-1)
             > c_conf_threshold
         )
+        
         valid_tensor = torch.tensor(valid, dtype=torch.bool)
         valid_tensor = valid_tensor & keyframe.gaussian_mask.clone().detach().to(device="cpu")
         # torch.save(valid_tensor, masks_dir / f"{keyframe.frame_id}.pt")
@@ -141,7 +146,15 @@ def save_gaussian_map(savedir, filename, keyframes, c_conf_threshold):
         # opacities.append(opacities_new)
         # num_gaussians += rotations_new.shape[0]
 
-        
+
+    # for i  in range(len(pointclouds)):
+    #     pcd = pointclouds[i]
+    #     mean = means[i]
+    #     diff = np.abs(pcd -mean)
+    #     diff_mean = diff.mean(axis=0)
+    #     print
+    #     print(f"diff mean: {diff_mean}, diff min : {diff.min(axis=0)}, diff max: {diff.max(axis=0)}")
+    #     torch.save(pcd, masks_dir / f"{keyframe.frame_id}.pt") 
     if len(sh) < 2:
         print("Not enough keyframes with SH, skipping saving.")
         return
@@ -152,6 +165,15 @@ def save_gaussian_map(savedir, filename, keyframes, c_conf_threshold):
     means = np.concatenate(means, axis=0)
     sh = np.concatenate(sh, axis=0)
     opacities = np.concatenate(opacities, axis=0)
+    # save_gaussian_new_ply(
+    #     savedir / filename,
+    #     scales,
+    #     rotations,
+    #     pointclouds,
+    #     sh,
+    #     opacities
+    # )
+    
     save_gaussian_new_ply(
         savedir / filename,
         scales,
