@@ -410,7 +410,7 @@ if __name__ == "__main__":
             dataset.timestamps,
             tracker.poses,
         )
-    save_gaussian_map = False
+    save_gaussian_map = True
     if save_gaussian_map:
         # save_dir, seq_name = eval.prepare_savedir(args, dataset)
         # folder_name = timestamp + f"_{config['gaussians']['num_iterations']}_it"

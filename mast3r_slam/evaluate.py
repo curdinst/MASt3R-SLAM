@@ -122,6 +122,7 @@ def save_gaussian_map(savedir, filename, keyframes, c_conf_threshold):
             > c_conf_threshold
         )
         valid_tensor = torch.tensor(valid, dtype=torch.bool)
+        valid_tensor = valid_tensor & keyframe.gaussian_mask.clone().detach().to(device="cpu")
         torch.save(valid_tensor, masks_dir / f"{keyframe.frame_id}.pt")
         rotations.append(rotations_new[valid])
         scales.append(scales_new[valid])
