@@ -388,11 +388,15 @@ if __name__ == "__main__":
     sec = datetime_now.split(":")[-1].split(".")[0]
     datetime_now_new = "_" + date + "-" + min + "-" + sec
 
+    poinclouds, colors = None, None
+    save_gaussian_map = True
+
+
     if dataset.save_results:
         # save_dir, seq_name = eval.prepare_savedir(args, dataset)
         seq_name = f"{seq_name + datetime_now_new}"
         eval.save_traj(save_dir, f"keyframe_poses.txt", dataset.timestamps, keyframes)
-        eval.save_reconstruction(
+        poinclouds, colors = eval.save_reconstruction(
             save_dir,
             f"pointcloud.ply",
             keyframes,
@@ -401,7 +405,18 @@ if __name__ == "__main__":
         eval.save_keyframes(
             save_dir / "keyframes" / seq_name, dataset.timestamps, keyframes
         )
-
+    if save_gaussian_map:
+        # save_dir, seq_name = eval.prepare_savedir(args, dataset)
+        # folder_name = timestamp + f"_{config['gaussians']['num_iterations']}_it"
+        file_name = "gaussians_eval.ply"
+        eval.save_gaussian_map(
+            savedir=save_dir,
+            filename=file_name,
+            keyframes=keyframes,
+            c_conf_threshold=last_msg.C_conf_threshold,
+            pointclouds=poinclouds,
+            colors=colors,
+        )
     save_frame_poses = True
     if save_frame_poses:
         eval.save_frame_poses(
@@ -410,17 +425,7 @@ if __name__ == "__main__":
             dataset.timestamps,
             tracker.poses,
         )
-    save_gaussian_map = True
-    if save_gaussian_map:
-        save_dir, seq_name = eval.prepare_savedir(args, dataset)
-        # folder_name = timestamp + f"_{config['gaussians']['num_iterations']}_it"
-        file_name = seq_name + datetime_now_new + "_wa.ply"
-        # eval.save_gaussian_map(
-        #     savedir=savedir,
-        #     filename=file_name,
-        #     keyframes=keyframes,
-        #     c_conf_threshold=last_msg.C_conf_threshold,
-        # )
+
 
     if save_frames:
         savedir = pathlib.Path(f"logs/frames/{datetime_now}")

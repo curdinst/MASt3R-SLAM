@@ -1,6 +1,7 @@
-use_calib: True
-# used_dataset: "datasets/tum/rgbd_dataset_freiburg1_desk" # datasets/replica/office2
-used_dataset: "datasets/replica/office2"
+use_calib: False
+use_calib4dataloader: True
+used_dataset: "datasets/tum/rgbd_dataset_freiburg1_desk" # datasets/replica/office2
+# used_dataset: "datasets/replica/office2"
 # used_dataset: "datasets/replica/office1"
 # used_dataset: "datasets/replica/office3"
 # used_dataset: "datasets/replica/room0"
@@ -8,11 +9,11 @@ used_dataset: "datasets/replica/office2"
 stop_at_frame: 1000000
 stop_at_keyframe: 10
 run_backend: True
-run_gaussian_optimizer: True
+run_gaussian_optimizer: False
 gaussians:
   init_lr: 0.05 #6.0
-  num_iterations: 50
-  window_size: 11 # 2 newest frames are subtracted -> window_size = 2 newest frames + N random frames
+  num_iterations: 0
+  window_size: 0 # 2 newest frames are subtracted -> window_size = 2 newest frames + N random frames
   tracking_itr_num: 100
   c_conf_threshold: 1.5
   l1_mask: True
