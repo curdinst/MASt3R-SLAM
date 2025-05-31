@@ -67,11 +67,22 @@ class GaussianOptimizer:
         self.background = torch.tensor([0, 0, 0], dtype=torch.float32, device=device)
         self.tracking_itr_num = config["gaussians"]["tracking_itr_num"]
         
-        K_frame = dataset.camera_intrinsics.K_frame
-        fx = K_frame[0, 0]
-        fy = K_frame[1, 1]
-        cx = K_frame[0, 2]
-        cy = K_frame[1, 2]
+        if config["use_calib4dataloader"]:
+            K_frame = dataset.camera_intrinsics.K_frame
+            fx = K_frame[0, 0]
+            fy = K_frame[1, 1]
+            cx = K_frame[0, 2]
+            cy = K_frame[1, 2]
+        elif "tum" in config["used_dataset"]:
+            fx = config["gaussians"]["calib_tum"]["fx"]
+            fy = config["gaussians"]["calib_tum"]["fy"]
+            cx = config["gaussians"]["calib_tum"]["cx"]
+            cy = config["gaussians"]["calib_tum"]["cy"]
+        elif "replica" in config["used_dataset"]:
+            fx = config["gaussians"]["calib_replica"]["fx"]
+            fy = config["gaussians"]["calib_replica"]["fy"]
+            cx = config["gaussians"]["calib_replica"]["cx"]
+            cy = config["gaussians"]["calib_replica"]["cy"]
         H, W = dataset.get_img_shape()[0]
         # dataset_name = config["used_dataset"].split("/")[1]
         # W = config["gaussians"]["Calibration"][dataset_name]["width"]
@@ -180,7 +191,7 @@ class GaussianOptimizer:
                 self.valid_masks[frame_idx] = l1_mask
                 # print(f"l1_loss_mask shape reshaped {l1_loss_mask.shape}")
                 # print(f"l1_mask shape {l1_mask.shape}, l1_mask sum {l1_mask.sum()}")
-            elif frame_idx == 0 and frame_idx not in self.valid_masks.keys():
+            elif (frame_idx == 0 and frame_idx not in self.valid_masks.keys()) or not self.config["gaussians"]["l1_mask"]:
                 self.valid_masks[frame_idx] = valid
             print(f"valid mask {self.valid_masks.keys()}")
 
