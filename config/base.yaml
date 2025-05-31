@@ -1,5 +1,5 @@
 use_calib: False
-use_calib4dataloader: True
+use_calib4dataloader: False
 used_dataset: "datasets/tum/rgbd_dataset_freiburg1_desk" # datasets/replica/office2
 # used_dataset: "datasets/replica/office2"
 # used_dataset: "datasets/replica/office1"
@@ -7,9 +7,9 @@ used_dataset: "datasets/tum/rgbd_dataset_freiburg1_desk" # datasets/replica/offi
 # used_dataset: "datasets/replica/room0"
 
 stop_at_frame: 1000000
-stop_at_keyframe: 5
+stop_at_keyframe: 10
 run_backend: True
-run_gaussian_optimizer: False
+run_gaussian_optimizer: True
 gaussians:
   init_lr: 0.05 #6.0
   num_iterations: 0
@@ -58,6 +58,17 @@ gaussians:
     densify_from_iter: 500
     densify_until_iter: 15000
     densify_grad_threshold: 0.0002
+  calib_tum:
+    fx: 458.8105481066265
+    fy: 458.1010015408324
+    cx: 255.6
+    cy: 191.6
+  calib_replica:
+    fx: 256.0
+    fy: 255.8823529411765
+    cx: 255.78666666666666
+    cy: 143.78676470588238
+  
 
 single_thread: False
 

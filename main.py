@@ -172,7 +172,6 @@ def run_gaussian_optimization(cfg, dataset, model, states: SharedStates, keyfram
         states.set_gauss_opt_frameid(len_frames - 2)
         gaussian_optimizer.optimize(keyframes=keyframes, iters=num_iterations, path=savedir)
         states.set_gauss_opt_frameid(len_frames - 1)
-
     gaussian_optimizer.save_results(savedir, keyframes)
     return
 
@@ -405,18 +404,6 @@ if __name__ == "__main__":
         eval.save_keyframes(
             save_dir / "keyframes" / seq_name, dataset.timestamps, keyframes
         )
-    if save_gaussian_map:
-        # save_dir, seq_name = eval.prepare_savedir(args, dataset)
-        # folder_name = timestamp + f"_{config['gaussians']['num_iterations']}_it"
-        file_name = "gaussians_eval.ply"
-        eval.save_gaussian_map(
-            savedir=save_dir,
-            filename=file_name,
-            keyframes=keyframes,
-            c_conf_threshold=last_msg.C_conf_threshold,
-            pointclouds=poinclouds,
-            colors=colors,
-        )
     save_frame_poses = True
     if save_frame_poses:
         eval.save_frame_poses(
@@ -429,6 +416,8 @@ if __name__ == "__main__":
     if save_gaussian_map:
         # save_dir, seq_name = eval.prepare_savedir(args, dataset)
         # folder_name = timestamp + f"_{config['gaussians']['num_iterations']}_it"
+        gaussian_optimizer = GaussianOptimizer(config, dataset, device)
+        gaussian_optimizer.save_results(save_dir, keyframes)
         file_name = "gaussians_eval.ply"
         eval.save_gaussian_map(
             savedir=save_dir,

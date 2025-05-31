@@ -94,7 +94,7 @@ def save_reconstruction(savedir, filename, keyframes, c_conf_threshold):
     save_ply(savedir / filename, pointclouds, colors)
     return pointclouds, colors
 
-def save_gaussian_map(savedir, filename, keyframes, c_conf_threshold, pointclouds, colors):
+def save_gaussian_map(savedir, filename, keyframes, c_conf_threshold):
     savedir = pathlib.Path(savedir)
     savedir.mkdir(exist_ok=True, parents=True)
     masks_dir = savedir / f"masks_{filename[:-4]}"
@@ -129,6 +129,7 @@ def save_gaussian_map(savedir, filename, keyframes, c_conf_threshold, pointcloud
         
         valid_tensor = torch.tensor(valid, dtype=torch.bool)
         valid_tensor = valid_tensor & keyframe.gaussian_mask.clone().detach().to(device="cpu")
+        valid = valid_tensor.cpu().numpy()
         # torch.save(valid_tensor, masks_dir / f"{keyframe.frame_id}.pt")
         rotations.append(rotations_new[valid])
         scales.append(scales_new[valid])
