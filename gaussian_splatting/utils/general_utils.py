@@ -15,7 +15,6 @@ from datetime import datetime
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 
 
 def inverse_sigmoid(x):
@@ -149,73 +148,6 @@ def build_scaling_rotation(s, r):
     return L
 
 
-def average_quaternion_pairs(q1: torch.Tensor, q2: torch.Tensor, t: float = 0.5) -> torch.Tensor:
-    """
-    Performs Spherical Linear Interpolation (Slerp) between two batches of quaternions.
-    This function is vectorized for (N, 4) tensors.
-
-    Args:
-        q1 (torch.Tensor): Start quaternions, shape (N, 4).
-        q2 (torch.Tensor): End quaternions, shape (N, 4).
-        t (float): Interpolation parameter (0.0 <= t <= 1.0).
-                   t=0.0 returns q1, t=1.0 returns q2.
-                   For the mean, use t=0.5.
-
-    Returns:
-        torch.Tensor: Interpolated quaternions, shape (N, 4).
-    """
-    if q1.shape != q2.shape or q1.shape[-1] != 4:
-        print(f"q1 shape: {q1.shape}, q2 shape: {q2.shape}")
-        raise ValueError("Input tensors must have the same shape and last dimension of size 4.")
-    if not (0.0 <= t <= 1.0):
-        raise ValueError("Interpolation parameter 't' must be between 0.0 and 1.0.")
-
-    # Ensure quaternions are normalized
-    q1_norm = torch.nn.functional.normalize(q1, p=2, dim=-1)
-    q2_norm = torch.nn.functional.normalize(q2, p=2, dim=-1)
-
-    # Compute dot product (cosine of the angle between quaternions)
-    dot_product = torch.sum(q1_norm * q2_norm, dim=-1, keepdim=True)
-
-    # Adjust sign if quaternions point in opposite directions to take the shortest path
-    # (q and -q represent the same rotation, but interp. between q1 and -q2
-    # is the shorter path than between q1 and q2 if dot_product < 0)
-    q2_aligned = torch.where(dot_product < 0, -q2_norm, q2_norm)
-    dot_product = torch.abs(dot_product) # Use the absolute dot product for angle calculation
-
-    # Clamp dot product to avoid numerical issues (e.g., beyond 1.0 due to float precision)
-    dot_product = torch.clamp(dot_product, -1.0, 1.0)
-
-    # Compute the angle between the quaternions
-    theta_0 = torch.acos(dot_product)
-
-    # Handle the case where quaternions are very close (theta_0 near 0)
-    # to avoid division by zero and numerical instability.
-    # In this case, linear interpolation is a good approximation.
-    threshold = 1e-6 # A small threshold
-    mask_close = (theta_0 < threshold)
-
-    # For quaternions that are very close, use linear interpolation
-    q_slerped_close = torch.nn.functional.normalize(
-        (1 - t) * q1_norm + t * q2_aligned, p=2, dim=-1
-    )
-
-    # For other quaternions, use the standard Slerp formula
-    sin_theta_0 = torch.sin(theta_0)
-    # Avoid division by zero if sin_theta_0 is very small (already handled by mask_close)
-    sin_theta_0_safe = torch.where(sin_theta_0 == 0, torch.ones_like(sin_theta_0) * 1e-12, sin_theta_0)
-
-
-    term1 = torch.sin((1 - t) * theta_0) / sin_theta_0_safe
-    term2 = torch.sin(t * theta_0) / sin_theta_0_safe
-
-    q_slerped_general = term1 * q1_norm + term2 * q2_aligned
-
-    # Combine results based on the mask
-    q_slerped = torch.where(mask_close, q_slerped_close, q_slerped_general)
-
-    return q_slerped
-
 def safe_state(silent):
     old_f = sys.stdout
 
@@ -246,3 +178,67 @@ def safe_state(silent):
     np.random.seed(0)
     torch.manual_seed(0)
     torch.cuda.set_device(torch.device("cuda:0"))
+
+
+def slerp(q1: torch.Tensor, q2: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+    """
+    Performs Spherical Linear Interpolation (Slerp) between two batches of quaternions.
+    This function is vectorized for (N, 4) tensors.
+
+    Args:
+        q1 (torch.Tensor): Start quaternions, shape (N, 4).
+        q2 (torch.Tensor): End quaternions, shape (N, 4).
+        t (torch.Tensor or float): Interpolation parameter (0.0 <= t <= 1.0).
+                                    Can be a float or a (N, 1) tensor for per-row weights.
+
+    Returns:
+        torch.Tensor: Interpolated quaternions, shape (N, 4).
+    """
+    if not isinstance(t, torch.Tensor):
+        # If t is a float, convert it to a tensor for broadcasting
+        t = torch.tensor(t, dtype=q1.dtype, device=q1.device).reshape(1, 1)
+
+    if not (0.0 <= t).all() and (t <= 1.0).all():
+        raise ValueError("Interpolation parameter 't' must be between 0.0 and 1.0.")
+
+    # Ensure quaternions are normalized
+    q1_norm = torch.nn.functional.normalize(q1, p=2, dim=-1)
+    q2_norm = torch.nn.functional.normalize(q2, p=2, dim=-1)
+
+    # Compute dot product (cosine of the angle between quaternions)
+    # Resulting shape: (N, 1)
+    dot_product = torch.sum(q1_norm * q2_norm, dim=-1, keepdim=True)
+
+    # Adjust sign if quaternions point in opposite directions to take the shortest path
+    q2_aligned = torch.where(dot_product < 0, -q2_norm, q2_norm)
+    dot_product = torch.abs(dot_product) # Use the absolute dot product for angle calculation
+
+    # Clamp dot product to avoid numerical issues (e.g., beyond 1.0 due to float precision)
+    dot_product = torch.clamp(dot_product, -1.0, 1.0)
+
+    # Compute the angle between the quaternions
+    theta_0 = torch.acos(dot_product) # Shape (N, 1)
+
+    # Handle the case where quaternions are very close (theta_0 near 0)
+    threshold = 1e-6
+    mask_close = (theta_0 < threshold) # Shape (N, 1)
+
+    # For quaternions that are very close, use linear interpolation
+    q_slerped_close = torch.nn.functional.normalize(
+        (1 - t) * q1_norm + t * q2_aligned, p=2, dim=-1
+    )
+
+    # For other quaternions, use the standard Slerp formula
+    sin_theta_0 = torch.sin(theta_0)
+    sin_theta_0_safe = torch.where(sin_theta_0 == 0, torch.ones_like(sin_theta_0) * 1e-12, sin_theta_0)
+
+
+    term1 = torch.sin((1 - t) * theta_0) / sin_theta_0_safe
+    term2 = torch.sin(t * theta_0) / sin_theta_0_safe
+
+    q_slerped_general = term1 * q1_norm + term2 * q2_aligned
+
+    # Combine results based on the mask
+    q_slerped = torch.where(mask_close, q_slerped_close, q_slerped_general)
+
+    return q_slerped
