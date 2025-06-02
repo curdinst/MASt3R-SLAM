@@ -5,7 +5,7 @@ import lietorch
 import torch
 from mast3r_slam.mast3r_utils import resize_img
 from mast3r_slam.config import config
-
+from gaussian_splatting.utils.general_utils import slerp
 
 class Mode(Enum):
     INIT = 0
@@ -104,7 +104,8 @@ class Frame:
                 # print(f"C shape: {C.shape}, SH shape: {SH.shape}")
                 self.opacities = ((self.C * self.opacities) + (C * opacity)) / (self.C  + C)
                 self.offsets = ((self.C * self.offsets) + (C * (mean - X))) / (self.C  + C)
-                self.rotations = ((self.C * self.rotations) + (C * rotation)) / (self.C  + C)
+                # self.rotations = ((self.C * self.rotations) + (C * rotation)) / (self.C  + C)
+                self.rotations = slerp(self.rotations, rotation, self.C / (self.C + C))
                 self.scales = ((self.C * self.scales) + (C * scale)) / (self.C  + C)
             elif gaussian_filtering_mode == "recent" and scale is not None:
                 self.SH = SH.clone()
@@ -452,7 +453,7 @@ class SharedKeyframes:
             print(f"Updating T_WC for idx: {idx}")
             # print(f"self.TWC[idx]: {self.T_WC[idx]}")
             # print(f"T_WCs.data: {T_WCs.data}")
-            print(f"Position corrections: {T_WCs.data[:,0,:3] - self.T_WC[idx][:,0,:3]}")
+            # print(f"Position corrections: {T_WCs.data[:,0,:3] - self.T_WC[idx][:,0,:3]}")
             self.T_WC[idx] = T_WCs.data
 
     def get_dirty_idx(self):
