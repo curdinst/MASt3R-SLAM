@@ -24,7 +24,7 @@ from mast3r_slam.geometry import constrain_points_to_ray, quat_mult
 from gaussian_splatting.utils.graphics_utils import focal2fov
 from gaussian_splatting.utils.pose_utils import update_pose
 from gaussian_splatting.utils.slam_utils import get_loss_tracking_rgb, get_loss_tracking_rgbd, get_loss_mapping_rgbd
-from gaussian_splatting.utils.general_utils import average_quaternion_pairs
+from gaussian_splatting.utils.general_utils import slerp
 
 from matplotlib import pyplot as plt
 import pickle
@@ -497,7 +497,7 @@ class GaussianOptimizer:
         features_dc_1[inlier_mask] = (features_dc_1[inlier_mask] + features_dc_2[inlier_mask]) / 2.0
         opacities_1[inlier_mask] = (opacities_1[inlier_mask] + opacities_2[inlier_mask]) / 2.0
         scales_1[inlier_mask] = (scales_1[inlier_mask] + scales_2[inlier_mask]) / 2.0
-        rotations_1[inlier_mask] = average_quaternion_pairs(rotations_1[inlier_mask], rotations_2[inlier_mask])
+        rotations_1[inlier_mask] = slerp(rotations_1[inlier_mask], rotations_2[inlier_mask], 0.5)
 
         # take_1 = ~inlier_mask & valid_mask_1 
         # means_1[take_1] = means_1[take_1]
