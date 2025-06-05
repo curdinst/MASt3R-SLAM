@@ -378,7 +378,7 @@ if __name__ == "__main__":
             print(f"FPS: {FPS}")
         i += 1
         # if i == config["stop_at_frame"]:
-        if len(keyframes) > config["stop_at_keyframe"] or i > config["stop_at_frame"]:
+        if len(keyframes) > config["stop_at_keyframe"] or i > config["stop_at_frame"]//config["dataset"]["subsample"]:
             print(f"Last timestamp: {timestamp}, frame: {i}, len(keyframes): {len(keyframes)}")
             states.set_mode(Mode.TERMINATED)
             break
