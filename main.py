@@ -376,9 +376,8 @@ if __name__ == "__main__":
             FPS = i / (time.time() - fps_timer)
             print(f"FPS: {FPS}")
         i += 1
-        print(f"num frames done: {i}")
         # if i == config["stop_at_frame"]:
-        if len(keyframes) > config["stop_at_keyframe"] or i > config["stop_at_frame"]:
+        if len(keyframes) > config["stop_at_keyframe"] or i > config["stop_at_frame"] // config["dataset"]["subsample"]:
             print(f"Last timestamp: {timestamp}, frame: {i}, len(keyframes): {len(keyframes)}")
             states.set_mode(Mode.TERMINATED)
             break
@@ -392,9 +391,12 @@ if __name__ == "__main__":
     poinclouds, colors = None, None
     save_gaussian_map = True
 
-    total_time_file = save_dir / f"total_time_{total_time:.2f}s.txt"
+    total_time_file = save_dir / f"FPS_{FPS:.2f}.txt"
     with open(total_time_file, "w") as f:
         f.write(f"Total execution time: {total_time:.2f} seconds\n")
+        f.write(f"FPS: {FPS:.2f}\n")
+        f.write(f"Total frames processed: {i}\n")
+        f.write(f"last frame id: {frame.frame_id}\n")
     if dataset.save_results:
         # save_dir, seq_name = eval.prepare_savedir(args, dataset)
         seq_name = f"{seq_name + datetime_now_new}"
@@ -422,13 +424,14 @@ if __name__ == "__main__":
         # folder_name = timestamp + f"_{config['gaussians']['num_iterations']}_it"
         gaussian_optimizer = GaussianOptimizer(config, dataset, device)
         gaussian_optimizer.save_results(save_dir, keyframes)
-        file_name = "gaussians_eval.ply"
-        eval.save_gaussian_map(
-            savedir=save_dir,
-            filename=file_name,
-            keyframes=keyframes,
-            c_conf_threshold=last_msg.C_conf_threshold,
-        )
+        # file_name = "gaussians_eval.ply"
+        # eval.save_gaussian_map(
+        #     savedir=save_dir,
+        #     filename=file_name,
+        #     keyframes=keyframes,
+        #     c_conf_threshold=last_msg.C_conf_threshold,
+        # )
+
 
     if save_frames:
         savedir = pathlib.Path(f"logs/frames/{datetime_now}")
