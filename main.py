@@ -207,7 +207,7 @@ if __name__ == "__main__":
     print(f"Saving to {save_dir}")
     # config["tracking"]["save_dir"] = str(save_dir)
     shutil.copyfile("/home/curdinst/repos/MASt3R-SLAM/config/base.yaml", os.path.join(save_dir, "base.yaml"))
-    shutil.copyfile("/home/curdinst/repos/MASt3R-SLAM/config/calib.yaml", os.path.join(save_dir, "calib.yaml"))
+    # shutil.copyfile("/home/curdinst/repos/MASt3R-SLAM/config/calib.yaml", os.path.join(save_dir, "calib.yaml"))
 
     manager = mp.Manager()
     main2viz = new_queue(manager, args.no_viz)
@@ -379,7 +379,7 @@ if __name__ == "__main__":
             print(f"FPS: {FPS}")
         i += 1
         # if i == config["stop_at_frame"]:
-        if len(keyframes) > config["stop_at_keyframe"] or i > config["stop_at_frame"]:
+        if len(keyframes) > config["stop_at_keyframe"] or i > config["stop_at_frame"]//config["dataset"]["subsample"]:
             print(f"Last timestamp: {timestamp}, frame: {i}, len(keyframes): {len(keyframes)}")
             states.set_mode(Mode.TERMINATED)
             break
