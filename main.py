@@ -411,17 +411,17 @@ if __name__ == "__main__":
             dataset.timestamps,
             tracker.poses,
         )
-    save_gaussian_map = False
+    save_gaussian_map = True
     if save_gaussian_map:
-        # save_dir, seq_name = eval.prepare_savedir(args, dataset)
-        # folder_name = timestamp + f"_{config['gaussians']['num_iterations']}_it"
-        file_name = "gaussians_eval.ply"
-        eval.save_gaussian_map(
-            savedir=save_dir,
-            filename=file_name,
-            keyframes=keyframes,
-            c_conf_threshold=last_msg.C_conf_threshold,
-        )
+        gaussian_opt = GaussianOptimizer(config, dataset, device)
+        gaussian_opt.save_results(save_dir, keyframes)
+        # file_name = "gaussians_eval.ply"
+        # eval.save_gaussian_map(
+        #     savedir=save_dir,
+        #     filename=file_name,
+        #     keyframes=keyframes,
+        #     c_conf_threshold=last_msg.C_conf_threshold,
+        # )
 
     if save_frames:
         savedir = pathlib.Path(f"logs/frames/{datetime_now}")
