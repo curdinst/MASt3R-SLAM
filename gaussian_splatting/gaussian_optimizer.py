@@ -177,6 +177,10 @@ class GaussianOptimizer:
             scales_new = (keyframe.T_WC.data[0,-1] * keyframe.scales)
             opacities_new = keyframe.opacities
             w_rotations = quat_mult(keyframe.T_WC.data, keyframe.rotations)
+            X_canon = constrain_points_to_ray(
+                keyframe.img_shape.flatten()[:2], keyframe.X_canon[None], keyframe.K
+            )
+            X_canon = X_canon.squeeze(0)
             w_means = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets)
 
             if self.config["gaussians"]["l1_mask"] and frame_idx not in self.valid_masks.keys() and frame_idx > 0:

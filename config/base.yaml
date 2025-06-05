@@ -1,5 +1,5 @@
-use_calib: False
-use_calib4dataloader: False
+use_calib: True
+use_calib4dataloader: True
 # used_dataset: "datasets/tum/rgbd_dataset_freiburg1_desk"
 used_dataset: "datasets/replica/office2"
 # used_dataset: "datasets/replica/office1"

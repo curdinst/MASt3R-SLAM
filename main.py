@@ -390,7 +390,19 @@ if __name__ == "__main__":
 
     poinclouds, colors = None, None
     save_gaussian_map = True
+    if config["run_backend"]:
+        backend.join()
+    if config["run_gaussian_optimizer"]:
+        gaussian_optimizer.join()
+    # Save FPS, duration, and number of iterations to a text file
+    time_now = time.time()
+    FPS = i / (time_now - fps_timer)
+    duration = time_now - fps_timer
 
+    with open(save_dir / f"performance_{FPS:.2f}_FPS.txt", "w") as f:
+        f.write("FPS: {:.2f}\n".format(FPS))
+        f.write("Duration: {:.2f} seconds\n".format(duration))
+        f.write("Number of Iterations: {}\n".format(i))
 
     if dataset.save_results:
         # save_dir, seq_name = eval.prepare_savedir(args, dataset)
@@ -405,18 +417,20 @@ if __name__ == "__main__":
         eval.save_keyframes(
             save_dir / "keyframes" / seq_name, dataset.timestamps, keyframes
         )
-    if save_gaussian_map:
+    # if save_gaussian_map:
         # save_dir, seq_name = eval.prepare_savedir(args, dataset)
         # folder_name = timestamp + f"_{config['gaussians']['num_iterations']}_it"
-        file_name = "gaussians_eval.ply"
-        eval.save_gaussian_map(
-            savedir=save_dir,
-            filename=file_name,
-            keyframes=keyframes,
-            c_conf_threshold=last_msg.C_conf_threshold,
-            pointclouds=poinclouds,
-            colors=colors,
-        )
+        # gaussian_opt = GaussianOptimizer(config, dataset, device)
+        # gaussian_opt.save_results(save_dir, keyframes)
+        # file_name = "gaussians_eval.ply"
+        # eval.save_gaussian_map(
+        #     savedir=save_dir,
+        #     filename=file_name,
+        #     keyframes=keyframes,
+        #     c_conf_threshold=last_msg.C_conf_threshold,
+        #     pointclouds=poinclouds,
+        #     colors=colors,
+        # )
     save_frame_poses = True
     if save_frame_poses:
         eval.save_frame_poses(
@@ -436,9 +450,6 @@ if __name__ == "__main__":
             cv2.imwrite(f"{savedir}/{i}.png", frame)
 
     print("done")
-    if config["run_backend"]:
-        backend.join()
-    if config["run_gaussian_optimizer"]:
-        gaussian_optimizer.join()
+
     if not args.no_viz:
         viz.join()
