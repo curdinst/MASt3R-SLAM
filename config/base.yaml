@@ -1,15 +1,15 @@
 use_calib: False
 use_calib4dataloader: False
-used_dataset: "datasets/tum/rgbd_dataset_freiburg1_desk" # datasets/replica/office2
-# used_dataset: "datasets/replica/office2"
+# used_dataset: "datasets/tum/rgbd_dataset_freiburg1_desk" # datasets/replica/office2
+used_dataset: "datasets/replica/office2"
 # used_dataset: "datasets/replica/office1"
 # used_dataset: "datasets/replica/office3"
 # used_dataset: "datasets/replica/room0"
 
-stop_at_frame: 1000000
-stop_at_keyframe: 10
+stop_at_frame: 900
+stop_at_keyframe: 11110
 run_backend: True
-run_gaussian_optimizer: True
+run_gaussian_optimizer: False
 gaussians:
   init_lr: 0.05 #6.0
   num_iterations: 0
@@ -73,7 +73,7 @@ gaussians:
 single_thread: False
 
 dataset:
-  subsample: 1
+  subsample: 4
   img_downsample: 1
   center_principle_point: True
 
@@ -120,6 +120,7 @@ local_opt:
   sigma_point: 0.05
   delta_norm: 1e-8
   use_cuda: True
+  backend_matches: True
 
 retrieval:
   k: 3

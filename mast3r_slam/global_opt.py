@@ -69,6 +69,19 @@ class FactorGraph:
         ii_tensor = torch.as_tensor(ii, device=self.device)
         jj_tensor = torch.as_tensor(jj, device=self.device)
 
+        edges = zip(ii, jj)
+        idx = 0
+        if self.cfg["backend_matches"]:
+            for (i, j) in edges:
+                kf = self.frames[i]
+                print(f"mask before: {kf.gaussian_mask.shape}, {kf.gaussian_mask.sum()}")
+                kf.gaussian_mask = kf.gaussian_mask & ~valid_match_i[idx].clone().detach().squeeze(-1)
+                # torch.save(valid_match_i[idx].clone().detach().squeeze(-1), f"/home/curdinst/repos/MASt3R-SLAM/logs/" + f"valid_match_{i}-2-{j}.pt")
+                # torch.save(valid_i[idx].clone().detach().squeeze(-1), f"/home/curdinst/repos/MASt3R-SLAM/logs/" + f"valid_i_{i}-2-{j}.pt")
+                print(f"mask after: {kf.gaussian_mask.shape}, {kf.gaussian_mask.sum()}")
+                self.frames[i] = kf
+                kf = self.frames[j]
+                idx += 1
         # NOTE: Saying we need both edge directions to be above thrhreshold to accept either
         invalid_edges = torch.minimum(match_frac_j, match_frac_i) < min_match_frac
         consecutive_edges = ii_tensor == (jj_tensor - 1)
@@ -92,19 +105,8 @@ class FactorGraph:
         print(f"valid edges: {ii_tensor} -> {jj_tensor}")
         edges = zip(ii_tensor.tolist(), jj_tensor.tolist())
         # edges = sorted(edges, key=lambda x: x[0])
-        print(f"not sorted edges: {edges}")
         print(f"valid_i shape {valid_i.shape}, valid_j shape {valid_j.shape}")
-        idx = 0
-        for (i, j) in edges:
-            kf = self.frames[i]
-            print(f"mask before: {kf.gaussian_mask.shape}, {kf.gaussian_mask.sum()}")
-            kf.gaussian_mask = kf.gaussian_mask & ~valid_match_i[idx].clone().detach().squeeze(-1)
-            torch.save(valid_match_i[idx].clone().detach().squeeze(-1), f"/home/curdinst/repos/MASt3R-SLAM/logs/" + f"valid_match_{i}-2-{j}.pt")
-            torch.save(valid_i[idx].clone().detach().squeeze(-1), f"/home/curdinst/repos/MASt3R-SLAM/logs/" + f"valid_i_{i}-2-{j}.pt")
-            print(f"mask after: {kf.gaussian_mask.shape}, {kf.gaussian_mask.sum()}")
-            self.frames[i] = kf
-            kf = self.frames[j]
-            idx += 1
+
 
         self.ii = torch.cat([self.ii, ii_tensor])
         self.jj = torch.cat([self.jj, jj_tensor])

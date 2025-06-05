@@ -521,5 +521,5 @@ class GaussianOptimizer:
         with open(optimized_poses_file, "wb") as f:
             pickle.dump(self.optimized_poses, f)
         gaussinas_file = os.path.join(output_folder, "gaussians.ply")
-        self.gaussians.save_ply(gaussinas_file)
+        # self.gaussians.save_ply(gaussinas_file)
         return

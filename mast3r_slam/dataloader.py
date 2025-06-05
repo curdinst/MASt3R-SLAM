@@ -57,6 +57,7 @@ class MonocularDataset(torch.utils.data.Dataset):
         return img["img"][0].shape[1:], raw_img_shape[:2]
 
     def subsample(self, subsample):
+        print(f"Subsampling dataset by {subsample} frames")
         self.rgb_files = self.rgb_files[::subsample]
         self.timestamps = self.timestamps[::subsample]
 

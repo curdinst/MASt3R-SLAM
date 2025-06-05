@@ -128,7 +128,8 @@ def save_gaussian_map(savedir, filename, keyframes, c_conf_threshold):
         )
         
         valid_tensor = torch.tensor(valid, dtype=torch.bool)
-        valid_tensor = valid_tensor & keyframe.gaussian_mask.clone().detach().to(device="cpu")
+        if config["gaussians"]["use_matching_mask"]:
+            valid_tensor = valid_tensor & keyframe.gaussian_mask.clone().detach().to(device="cpu")
         valid = valid_tensor.cpu().numpy()
         # torch.save(valid_tensor, masks_dir / f"{keyframe.frame_id}.pt")
         rotations.append(rotations_new[valid])
@@ -175,14 +176,14 @@ def save_gaussian_map(savedir, filename, keyframes, c_conf_threshold):
     #     opacities
     # )
     
-    save_gaussian_new_ply(
-        savedir / filename,
-        scales,
-        rotations,
-        means,
-        sh,
-        opacities
-    )
+    # save_gaussian_new_ply(
+    #     savedir / filename,
+    #     scales,
+    #     rotations,
+    #     means,
+    #     sh,
+    #     opacities
+    # )
 
 
 def save_keyframes(savedir, timestamps, keyframes: SharedKeyframes):

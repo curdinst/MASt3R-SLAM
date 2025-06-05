@@ -205,7 +205,7 @@ if __name__ == "__main__":
     print(f"Saving to {save_dir}")
     # config["tracking"]["save_dir"] = str(save_dir)
     shutil.copyfile("/home/curdinst/repos/MASt3R-SLAM/config/base.yaml", os.path.join(save_dir, "base.yaml"))
-    shutil.copyfile("/home/curdinst/repos/MASt3R-SLAM/config/calib.yaml", os.path.join(save_dir, "calib.yaml"))
+    # shutil.copyfile("/home/curdinst/repos/MASt3R-SLAM/config/calib.yaml", os.path.join(save_dir, "calib.yaml"))
 
     manager = mp.Manager()
     main2viz = new_queue(manager, args.no_viz)
@@ -376,12 +376,14 @@ if __name__ == "__main__":
             FPS = i / (time.time() - fps_timer)
             print(f"FPS: {FPS}")
         i += 1
+        print(f"num frames done: {i}")
         # if i == config["stop_at_frame"]:
         if len(keyframes) > config["stop_at_keyframe"] or i > config["stop_at_frame"]:
             print(f"Last timestamp: {timestamp}, frame: {i}, len(keyframes): {len(keyframes)}")
             states.set_mode(Mode.TERMINATED)
             break
-
+    
+    total_time = time.time() - fps_timer
     date = datetime_now.split(":")[0]
     min = datetime_now.split(":")[1]
     sec = datetime_now.split(":")[-1].split(".")[0]
@@ -390,7 +392,9 @@ if __name__ == "__main__":
     poinclouds, colors = None, None
     save_gaussian_map = True
 
-
+    total_time_file = save_dir / f"total_time_{total_time:.2f}s.txt"
+    with open(total_time_file, "w") as f:
+        f.write(f"Total execution time: {total_time:.2f} seconds\n")
     if dataset.save_results:
         # save_dir, seq_name = eval.prepare_savedir(args, dataset)
         seq_name = f"{seq_name + datetime_now_new}"
