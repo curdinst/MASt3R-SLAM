@@ -119,6 +119,7 @@ local_opt:
   sigma_point: 0.05
   delta_norm: 1e-8
   use_cuda: True
+  backend_matches: True
 
 retrieval:
   k: 3

@@ -106,6 +106,7 @@ class GaussianOptimizer:
         self.keyframes = []
         self.optimized_poses = {}
         self.N_optimized_kf_gaussians = {}
+        self.averaged_masks = {}
 
     def optimize(self, keyframes: SharedKeyframes, iters, save_results=False, path=None):
         print(f"run Gaussian Optimizer, number of keyframes: {len(keyframes)}")
@@ -120,7 +121,16 @@ class GaussianOptimizer:
         matching_gaussians = None
         num_keyframes = len(keyframes)
         for frame_idx in range(num_keyframes):
+            keyframe = keyframes[frame_idx]
+            idx = 0
+            for other_frame in keyframe.corresponding_frames:
+                if other_frame == -1: break
+                idx_i2j = einops.rearrange(keyframe.correspondance_masks[idx], "(h w) -> h w", h=self.intrinsics["H"], w=self.intrinsics["W"])
+                valid_mask = torch.ones((self.intrinsics["H"], self.intrinsics["W"]), dtype=torch.bool, device=self.device)
+                valid_mask[idx_i2j] = False
+                self.averaged_masks[other_frame] = self.averaged_masks[other_frame] & valid_mask
 
+        for frame_idx in range(num_keyframes):
             keyframe = keyframes[frame_idx]
             # print(f"viewpoint_stack.keys() {self.viewpoint_stack.keys()}")
             # if frame_idx in self.viewpoint_stack.keys(): continue
@@ -234,7 +244,10 @@ class GaussianOptimizer:
 
             print(f"valid mask keys {self.valid_masks.keys()}")
             if self.config["gaussians"]["use_matching_mask"] and frame_idx < num_keyframes - 1:
-            # if self.config["gaussians"]["use_matching_mask"] and frame_idx != 0:
+                corresponding_frames = keyframe.corresponding_frames[keyframe.corresponding_frames!=-1]
+                print(f"corresponding_frames: {corresponding_frames}")
+
+            if self.config["gaussians"]["use_matching_mask"] and frame_idx != 0:
                 valid = self.valid_masks[frame_idx] & keyframe.gaussian_mask
                 # self.valid_masks[frame_idx] = valid
                 to_average = self.valid_masks[frame_idx] & ~keyframe.gaussian_mask

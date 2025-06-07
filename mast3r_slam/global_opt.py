@@ -73,6 +73,27 @@ class FactorGraph:
         consecutive_edges = ii_tensor == (jj_tensor - 1)
         invalid_edges = (~consecutive_edges) & invalid_edges
 
+        if self.cfg["backend_matches"]:
+            edges = zip(ii,jj)
+            # if len(ii) > 3:
+            print(f"ii: {ii}, jj: {jj}")
+            # kf.corresponding_frames = torch.tensor(jj)
+            kf = self.frames[jj[0]]
+            idx = 0
+            for (i, j) in edges:
+                if idx == 3:
+                    print(f"\033[91mFactorGraph: Adding {len(ii)} edges, {invalid_edges.sum()} invalid edges\033[0m")
+                    break
+                kf.corresponding_frames[idx] = i
+                print(f"mask before: {kf.correspondance_masks.shape}")
+                print(f"idx_i2j: {idx_i2j.shape}")
+                # kf.gaussian_mask = kf.gaussian_mask & ~valid_match_i[idx].clone().detach().squeeze(-1)
+                kf.correspondance_masks[idx] = idx_i2j[idx]
+                # torch.save(valid_match_i[idx].clone().detach().squeeze(-1), f"/home/curdinst/repos/MASt3R-SLAM/logs/" + f"valid_match_{i}-2-{j}.pt")
+                # torch.save(valid_i[idx].clone().detach().squeeze(-1), f"/home/curdinst/repos/MASt3R-SLAM/logs/" + f"valid_i_{i}-2-{j}.pt")
+                print(f"mask after: {kf.gaussian_mask.shape}, {kf.gaussian_mask.sum()}")
+                idx += 1
+            self.frames[jj[0]] = kf
         if invalid_edges.any() and is_reloc:
             return False
 

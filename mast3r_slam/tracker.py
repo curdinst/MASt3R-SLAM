@@ -145,7 +145,7 @@ class FrameTracker:
         # print(keyframe.SH is None)
         # write back the fitered pointmap
 
-        keyframe.update_gaussian_mask(valid_kf.squeeze(-1).clone(), idx_f2k=idx_f2k)
+        # keyframe.update_gaussian_mask(valid_kf.squeeze(-1).clone(), idx_f2k=idx_f2k, is_tracking=True, corresponding_kf_idx=None)
         self.keyframes[len(self.keyframes) - 1] = keyframe
 
         # Keyframe selection

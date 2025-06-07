@@ -38,7 +38,8 @@ class Frame:
     N_guass: int = 0
     N_gauss_updates: int = 0
     gaussian_mask: Optional[torch.Tensor] = None
-    correspondance_mask: Optional[torch.Tensor] = None
+    correspondance_masks: Optional[torch.Tensor] = None
+    corresponding_frames: Optional[torch.Tensor] = None
 
     def get_score(self, C):
         filtering_score = config["tracking"]["filtering_score"]
@@ -67,7 +68,7 @@ class Frame:
                 self.rotations = rotation.clone()
                 self.scales = scale.clone()
                 # self.gaussian_mask = torch.ones(X.shape[0], dtype=torch.bool, device=X.device)
-                # self.correspondance_mask = torch.ones(X.shape[0], dtype=torch.bool, device=X.device)
+                # self.correspondance_masks = torch.ones(X.shape[0], dtype=torch.bool, device=X.device)
             return
 
         if filtering_mode == "first":
@@ -186,13 +187,20 @@ class Frame:
         return
 
     # @added
-    def update_gaussian_mask(self, valid_kf, idx_f2k):
-        self.gaussian_mask = ~valid_kf
-        # correspndances = torch.unique(idx_f2k[valid_kf])
-        # correspondance_mask = torch.zeros_like(self.gaussian_mask, dtype=torch.bool)
-        # correspondance_mask[correspndances] = True
-        self.correspondance_mask = idx_f2k
-        # print(f"Updating gaussian mask for frame {self.frame_id} with {valid_kf.sum()} valid points")
+    # def update_gaussian_mask(self, valid_kf, idx_f2k, is_tracking, corresponding_kf_idx=None):
+    #     self.gaussian_mask = ~valid_kf
+    #     # correspndances = torch.unique(idx_f2k[valid_kf])
+    #     # correspondance_masks = torch.zeros_like(self.gaussian_mask, dtype=torch.bool)
+    #     # correspondance_masks[correspndances] = True
+    #     if is_tracking:
+    #         idx = int(~is_tracking)
+    #         corresponding_kf_idx = len
+    #     else:
+    #         for idx,frame_id in enumerate(self.corresponding_frames):
+    #             if frame_id == -1: break
+    #     self.correspondance_masks[idx,...] = idx_f2k
+    #     self.corresponding_frames[idx] = corresponding_kf_idx
+    #     # print(f"Updating gaussian mask for frame {self.frame_id} with {valid_kf.sum()} valid points")
 
     def get_average_conf(self):
         return self.C / self.N if self.C is not None else None
@@ -250,7 +258,8 @@ class SharedStates:
         self.rotations = torch.zeros(h * w, 4, device=device, dtype=dtype).share_memory_()
         self.scales = torch.zeros(h * w, 3, device=device, dtype=dtype).share_memory_()
         self.gaussian_mask = torch.zeros(h * w, device=device, dtype=dtype).share_memory_()
-        self.correspondance_mask = torch.zeros(h * w, device=device, dtype=dtype).share_memory_()
+        self.correspondance_masks = torch.zeros(3, h * w, device=device, dtype=dtype).share_memory_()
+        self.corresponding_frames = -1*torch.ones(3, device=device, dtype=torch.int).share_memory_()
         # fmt: on
 
     def set_frame(self, frame):
@@ -273,7 +282,8 @@ class SharedStates:
                 self.scales[:] = frame.scales
             if frame.gaussian_mask is not None:
                 self.gaussian_mask[:] = frame.gaussian_mask
-                self.correspondance_mask[:] = frame.correspondance_mask
+                self.correspondance_masks[:] = frame.correspondance_masks
+                self.corresponding_frames[:] = frame.corresponding_frames
 
     def get_frame(self):
         with self.lock:
@@ -301,7 +311,8 @@ class SharedStates:
             frame.rotations = self.rotations
             frame.scales = self.scales
             frame.gaussian_mask = self.gaussian_mask
-            frame.correspondance_mask = self.correspondance_mask
+            frame.correspondance_masks = self.correspondance_masks
+            frame.corresponding_frames = self.corresponding_frames
             return frame
 
     def queue_global_optimization(self, idx):
@@ -382,7 +393,8 @@ class SharedKeyframes:
         self.rotations = torch.zeros(buffer, h * w, 4, device=device, dtype=dtype).share_memory_()
         self.scales = torch.zeros(buffer, h * w, 3, device=device, dtype=dtype).share_memory_()
         self.gaussian_mask = torch.zeros(buffer, h * w, device=device, dtype=torch.bool).share_memory_()
-        self.correspondance_mask = torch.zeros(buffer, h * w, device=device, dtype=torch.int).share_memory_()
+        self.correspondance_masks = torch.zeros(buffer, 3, h * w, device=device, dtype=torch.int).share_memory_()
+        self.corresponding_frames = -1 * torch.ones(buffer, 3, device=device, dtype=torch.int).share_memory_()
 
     def __getitem__(self, idx) -> Frame:
         with self.lock:
@@ -415,7 +427,8 @@ class SharedKeyframes:
                 kf.rotations = self.rotations[idx]
                 kf.scales = self.scales[idx]
                 kf.gaussian_mask = self.gaussian_mask[idx]
-                kf.correspondance_mask = self.correspondance_mask[idx]
+                kf.correspondance_masks = self.correspondance_masks[idx]
+                kf.corresponding_frames = self.corresponding_frames[idx]
             else:
                 print("get SH is None")
             return kf
@@ -455,7 +468,8 @@ class SharedKeyframes:
                 print("set SH is None")
             if value.gaussian_mask is not None:
                 self.gaussian_mask[idx] = value.gaussian_mask
-                self.correspondance_mask[idx] = value.correspondance_mask
+                self.correspondance_masks[idx] = value.correspondance_masks
+                self.corresponding_frames[idx] = value.corresponding_frames
             return idx
 
     def __len__(self):
