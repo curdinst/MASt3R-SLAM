@@ -128,7 +128,10 @@ class GaussianOptimizer:
                 idx_i2j = einops.rearrange(keyframe.correspondance_masks[idx], "(h w) -> h w", h=self.intrinsics["H"], w=self.intrinsics["W"])
                 valid_mask = torch.ones((self.intrinsics["H"], self.intrinsics["W"]), dtype=torch.bool, device=self.device)
                 valid_mask[idx_i2j] = False
-                self.averaged_masks[other_frame] = self.averaged_masks[other_frame] & valid_mask
+                if other_frame not in self.averaged_masks.keys():
+                    self.averaged_masks[other_frame] = valid_mask
+                else:
+                    self.averaged_masks[other_frame] = self.averaged_masks[other_frame] & valid_mask
 
         for frame_idx in range(num_keyframes):
             keyframe = keyframes[frame_idx]
@@ -195,8 +198,29 @@ class GaussianOptimizer:
             w_rotations = quat_mult(keyframe.T_WC.data, keyframe.rotations)
             w_means = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets)
             sh = keyframe.SH
-            if matching_gaussians is not None and self.config["gaussians"]["average_correspondances"]:
-                correspondance_mask = matching_gaussians[-1]
+            if frame_idx > 0 and self.config["gaussians"]["average_correspondances"]:
+                # correspondance_mask = matching_gaussians[-1]
+                averaged_mask = self.averaged_masks[frame_idx]
+                for idx, other_frame in enumerate(keyframe.corresponding_frames):
+                    if other_frame == -1: break
+                    idx_i2j = keyframe.correspondance_masks[idx]
+                    valid_correspondance = keyframe.gaussian_masks[idx]
+                    old_keyframe = keyframes[other_frame]
+                    to_average = self.valid_masks[frame_idx] & ~keyframe.gaussian_mask
+                    old_kf_scales = (old_keyframe.T_WC.data[0,-1] * old_keyframe.scales)[to_average]
+                    old_kf_opacities_new = old_keyframe.opacities[to_average]
+                    old_kf_w_rotations = quat_mult(old_keyframe.T_WC.data, old_keyframe.rotations)[to_average]
+                    old_kf_w_means = old_keyframe.T_WC.act(old_keyframe.X_canon + old_keyframe.offsets)[to_average]
+                    old_kf_sh = old_keyframe.SH[to_average]
+                    idx_i2j = idx_i2j[to_average]
+                    gaussians_old_kf = (
+                        old_kf_w_means[idx_i2j],
+                        old_kf_sh[idx_i2j],
+                        old_kf_opacities_new[idx_i2j],
+                        old_kf_scales[idx_i2j],
+                        old_kf_w_rotations[idx_i2j]
+                    )
+                    
                 # invalid_indices = torch.where(~valid)
                 correspondance_mask_valid = valid[correspondance_mask]
                 print(f"correspondance_mask_valid shape {correspondance_mask_valid.shape}, correspondance_mask shape {correspondance_mask.shape}")
