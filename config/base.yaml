@@ -8,7 +8,7 @@ used_dataset: "datasets/replica/office2"
 stop_at_frame: 9000
 stop_at_keyframe: 1000
 run_backend: True
-run_gaussian_optimizer: False
+run_gaussian_optimizer: True
 gaussians:
   init_lr: 0.05 #6.0
   num_iterations: 0

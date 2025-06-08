@@ -92,7 +92,7 @@ class FactorGraph:
                 kf.gaussian_masks[idx] = valid_match_i[idx].clone().detach().squeeze(-1)
                 # torch.save(valid_match_i[idx].clone().detach().squeeze(-1), f"/home/curdinst/repos/MASt3R-SLAM/logs/" + f"valid_match_{i}-2-{j}.pt")
                 # torch.save(valid_i[idx].clone().detach().squeeze(-1), f"/home/curdinst/repos/MASt3R-SLAM/logs/" + f"valid_i_{i}-2-{j}.pt")
-                print(f"mask after: {kf.gaussian_mask.shape}, {kf.gaussian_mask.sum()}")
+                print(f"mask after: {kf.gaussian_masks.shape}, {kf.gaussian_masks.sum()}")
                 idx += 1
             self.frames[jj[0]] = kf
         if invalid_edges.any() and is_reloc:
