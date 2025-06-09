@@ -402,7 +402,9 @@ if __name__ == "__main__":
         eval.save_keyframes(
             save_dir / "keyframes" / seq_name, dataset.timestamps, keyframes
         )
-
+    if config["run_backend"]:
+        backend.join()
+        
     save_frame_poses = True
     if save_frame_poses:
         eval.save_frame_poses(
@@ -432,8 +434,7 @@ if __name__ == "__main__":
             cv2.imwrite(f"{savedir}/{i}.png", frame)
 
     print("done")
-    if config["run_backend"]:
-        backend.join()
+
     if config["run_gaussian_optimizer"]:
         gaussian_optimizer.join()
     if not args.no_viz:

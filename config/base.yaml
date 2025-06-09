@@ -6,16 +6,16 @@ used_dataset: "datasets/replica/office2"
 # used_dataset: "datasets/replica/room0"
 
 stop_at_frame: 9000
-stop_at_keyframe: 1000
+stop_at_keyframe: 3
 run_backend: True
-run_gaussian_optimizer: True
+run_gaussian_optimizer: False
 gaussians:
   init_lr: 0.05 #6.0
   num_iterations: 0
   window_size: 11 # 2 newest frames are subtracted -> window_size = 2 newest frames + N random frames
   tracking_itr_num: 100
   c_conf_threshold: 1.5
-  use_matching_mask: True
+  use_matching_mask: False
   average_correspondances: True
   l1_mask: False
   l1_threshold: 0.1
