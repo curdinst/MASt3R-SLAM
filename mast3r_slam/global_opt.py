@@ -85,14 +85,14 @@ class FactorGraph:
                     print(f"\033[91mFactorGraph: Adding {len(ii)} edges, {invalid_edges.sum()} invalid edges\033[0m")
                     break
                 kf.corresponding_frames[idx] = i
-                print(f"mask before: {kf.correspondance_masks.shape}")
+                print(f"mask before: {kf.idx_j2i.shape}")
                 print(f"idx_i2j: {idx_i2j.shape}")
                 # kf.gaussian_mask = kf.gaussian_mask & ~valid_match_i[idx].clone().detach().squeeze(-1)
-                kf.correspondance_masks[idx] = idx_j2i[idx]
-                kf.gaussian_masks[idx] = valid_match_i[idx].clone().detach().squeeze(-1)
+                kf.idx_j2i[idx] = idx_j2i[idx]
+                kf.valid_match_i[idx] = valid_match_i[idx].clone().detach().squeeze(-1)
                 # torch.save(valid_match_i[idx].clone().detach().squeeze(-1), f"/home/curdinst/repos/MASt3R-SLAM/logs/" + f"valid_match_{i}-2-{j}.pt")
                 # torch.save(valid_i[idx].clone().detach().squeeze(-1), f"/home/curdinst/repos/MASt3R-SLAM/logs/" + f"valid_i_{i}-2-{j}.pt")
-                print(f"mask after: {kf.gaussian_masks.shape}, {kf.gaussian_masks.sum()}")
+                print(f"mask after: {kf.valid_match_i.shape}, {kf.valid_match_i.sum()}")
                 idx += 1
             self.frames[jj[0]] = kf
         if invalid_edges.any() and is_reloc:
@@ -191,7 +191,7 @@ class FactorGraph:
 
         # Constrain points to ray
         img_size = self.frames[0].img.shape[-2:]
-        Xs = constrain_points_to_ray(img_size, Xs, K)
+        # Xs = constrain_points_to_ray(img_size, Xs, K)
 
         ii, jj, idx_ii2jj, valid_match, Q_ii2jj = self.prep_two_way_edges()
 

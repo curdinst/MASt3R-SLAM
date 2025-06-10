@@ -58,6 +58,8 @@ class FrameTracker:
         Qk = torch.sqrt(Qff[idx_f2k] * Qkf)
         (Sff, Rff, SHff, Off, Mff, Skf, Rkf, SHkf, Okf, Mkf) = gaussian_params
 
+        if config["use_calib"]:
+            Xff = constrain_points_to_ray(frame.img.shape[-2:], Xff[None], keyframe.K)[0,...]
         # Update keyframe pointmap after registration (need pose)
         frame.update_pointmap(Xff, Cff, Sff, Rff, SHff, Off, Mff)
 
@@ -134,6 +136,8 @@ class FrameTracker:
         # print(f"scale_CkCf {scale_CkCf}")
         Skk = scale_CkCf * Skf
         # Skk = Skf
+        if config["use_calib"]:
+            Xkk = constrain_points_to_ray(img_size, Xkk[None], K)[0,...]
         keyframe.update_pointmap(Xkk, Ckf, Skk, Rkk, SHkf, Okf, Mkk)
 
 
@@ -200,8 +204,8 @@ class FrameTracker:
         valid_meas_k = None
 
         if use_calib:
-            Xf = constrain_points_to_ray(img_size, Xf[None], K).squeeze(0)
-            Xk = constrain_points_to_ray(img_size, Xk[None], K).squeeze(0)
+            # Xf = constrain_points_to_ray(img_size, Xf[None], K).squeeze(0)
+            # Xk = constrain_points_to_ray(img_size, Xk[None], K).squeeze(0)
 
             # Setup pixel coordinates
             uv_k = get_pixel_coords(1, img_size, device=Xf.device, dtype=Xf.dtype)

@@ -6,6 +6,7 @@ import torch
 from mast3r_slam.mast3r_utils import resize_img
 from mast3r_slam.config import config
 from gaussian_splatting.utils.general_utils import slerp
+from mast3r_slam.geometry import constrain_points_to_ray
 
 
 class Mode(Enum):
@@ -37,8 +38,8 @@ class Frame:
     scales: Optional[torch.Tensor] = None
     N_guass: int = 0
     N_gauss_updates: int = 0
-    gaussian_masks: Optional[torch.Tensor] = None
-    correspondance_masks: Optional[torch.Tensor] = None
+    valid_match_i: Optional[torch.Tensor] = None
+    idx_j2i: Optional[torch.Tensor] = None
     corresponding_frames: Optional[torch.Tensor] = None
 
     def get_score(self, C):
@@ -52,7 +53,8 @@ class Frame:
     def update_pointmap(self, X: torch.Tensor, C: torch.Tensor, scale: torch.Tensor=None, rotation: torch.Tensor=None, SH: torch.Tensor=None, opacity: torch.Tensor=None, mean: torch.Tensor=None):
         filtering_mode = config["tracking"]["filtering_mode"]
         # filtering_mode = "first"
-
+        # if config["use_calib"]:
+        #         X = constrain_points_to_ray(self.img_shape.flatten()[:2], X[None], self.K)[0,...]
         if self.N == 0:
             self.X_canon = X.clone()
             self.C = C.clone()
@@ -67,8 +69,8 @@ class Frame:
                 self.offsets = mean.clone() - self.X_canon # only store offsets
                 self.rotations = rotation.clone()
                 self.scales = scale.clone()
-                # self.gaussian_masks = torch.ones(X.shape[0], dtype=torch.bool, device=X.device)
-                # self.correspondance_masks = torch.ones(X.shape[0], dtype=torch.bool, device=X.device)
+                # self.valid_match_i = torch.ones(X.shape[0], dtype=torch.bool, device=X.device)
+                # self.idx_j2i = torch.ones(X.shape[0], dtype=torch.bool, device=X.device)
             return
 
         if filtering_mode == "first":
@@ -188,17 +190,17 @@ class Frame:
 
     # @added
     # def update_gaussian_mask(self, valid_kf, idx_f2k, is_tracking, corresponding_kf_idx=None):
-    #     self.gaussian_masks = ~valid_kf
+    #     self.valid_match_i = ~valid_kf
     #     # correspndances = torch.unique(idx_f2k[valid_kf])
-    #     # correspondance_masks = torch.zeros_like(self.gaussian_masks, dtype=torch.bool)
-    #     # correspondance_masks[correspndances] = True
+    #     # idx_j2i = torch.zeros_like(self.valid_match_i, dtype=torch.bool)
+    #     # idx_j2i[correspndances] = True
     #     if is_tracking:
     #         idx = int(~is_tracking)
     #         corresponding_kf_idx = len
     #     else:
     #         for idx,frame_id in enumerate(self.corresponding_frames):
     #             if frame_id == -1: break
-    #     self.correspondance_masks[idx,...] = idx_f2k
+    #     self.idx_j2i[idx,...] = idx_f2k
     #     self.corresponding_frames[idx] = corresponding_kf_idx
     #     # print(f"Updating gaussian mask for frame {self.frame_id} with {valid_kf.sum()} valid points")
 
@@ -257,8 +259,8 @@ class SharedStates:
         self.offsets = torch.zeros(h * w, 3, device=device, dtype=dtype).share_memory_()
         self.rotations = torch.zeros(h * w, 4, device=device, dtype=dtype).share_memory_()
         self.scales = torch.zeros(h * w, 3, device=device, dtype=dtype).share_memory_()
-        self.gaussian_masks = torch.zeros(3, h * w, device=device, dtype=dtype).share_memory_()
-        self.correspondance_masks = torch.zeros(3, h * w, device=device, dtype=dtype).share_memory_()
+        self.valid_match_i = torch.zeros(3, h * w, device=device, dtype=dtype).share_memory_()
+        self.idx_j2i = torch.zeros(3, h * w, device=device, dtype=dtype).share_memory_()
         self.corresponding_frames = -1*torch.ones(3, device=device, dtype=torch.int).share_memory_()
         # fmt: on
 
@@ -280,9 +282,9 @@ class SharedStates:
                 self.offsets[:] = frame.offsets
                 self.rotations[:] = frame.rotations
                 self.scales[:] = frame.scales
-            if frame.gaussian_masks is not None:
-                self.gaussian_masks[:] = frame.gaussian_masks
-                self.correspondance_masks[:] = frame.correspondance_masks
+            if frame.valid_match_i is not None:
+                self.valid_match_i[:] = frame.valid_match_i
+                self.idx_j2i[:] = frame.idx_j2i
                 self.corresponding_frames[:] = frame.corresponding_frames
 
     def get_frame(self):
@@ -310,8 +312,8 @@ class SharedStates:
             frame.offsets = self.offsets
             frame.rotations = self.rotations
             frame.scales = self.scales
-            frame.gaussian_masks = self.gaussian_masks
-            frame.correspondance_masks = self.correspondance_masks
+            frame.valid_match_i = self.valid_match_i
+            frame.idx_j2i = self.idx_j2i
             frame.corresponding_frames = self.corresponding_frames
             return frame
 
@@ -392,8 +394,8 @@ class SharedKeyframes:
         self.offsets = torch.zeros(buffer, h * w, 3, device=device, dtype=dtype).share_memory_()
         self.rotations = torch.zeros(buffer, h * w, 4, device=device, dtype=dtype).share_memory_()
         self.scales = torch.zeros(buffer, h * w, 3, device=device, dtype=dtype).share_memory_()
-        self.gaussian_masks = torch.zeros(buffer, 3, h * w, device=device, dtype=torch.bool).share_memory_()
-        self.correspondance_masks = torch.zeros(buffer, 3, h * w, device=device, dtype=torch.int).share_memory_()
+        self.valid_match_i = torch.zeros(buffer, 3, h * w, device=device, dtype=torch.bool).share_memory_()
+        self.idx_j2i = torch.zeros(buffer, 3, h * w, device=device, dtype=torch.int).share_memory_()
         self.corresponding_frames = -1 * torch.ones(buffer, 3, device=device, dtype=torch.int).share_memory_()
 
     def __getitem__(self, idx) -> Frame:
@@ -426,8 +428,8 @@ class SharedKeyframes:
                 kf.offsets = self.offsets[idx]
                 kf.rotations = self.rotations[idx]
                 kf.scales = self.scales[idx]
-                kf.gaussian_masks = self.gaussian_masks[idx]
-                kf.correspondance_masks = self.correspondance_masks[idx]
+                kf.valid_match_i = self.valid_match_i[idx]
+                kf.idx_j2i = self.idx_j2i[idx]
                 kf.corresponding_frames = self.corresponding_frames[idx]
             else:
                 print("get SH is None")
@@ -466,9 +468,9 @@ class SharedKeyframes:
                 self.scales[idx] = value.scales
             else:
                 print("set SH is None")
-            if value.gaussian_masks is not None:
-                self.gaussian_masks[idx] = value.gaussian_masks
-                self.correspondance_masks[idx] = value.correspondance_masks
+            if value.valid_match_i is not None:
+                self.valid_match_i[idx] = value.valid_match_i
+                self.idx_j2i[idx] = value.idx_j2i
                 self.corresponding_frames[idx] = value.corresponding_frames
             return idx
 

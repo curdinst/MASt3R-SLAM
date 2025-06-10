@@ -74,11 +74,11 @@ def save_reconstruction(savedir, filename, keyframes, c_conf_threshold):
     colors = []
     for i in range(len(keyframes)):
         keyframe = keyframes[i]
-        if config["use_calib"]:
-            X_canon = constrain_points_to_ray(
-                keyframe.img_shape.flatten()[:2], keyframe.X_canon[None], keyframe.K
-            )
-            keyframe.X_canon = X_canon.squeeze(0)
+        # if config["use_calib"]:
+        #     X_canon = constrain_points_to_ray(
+        #         keyframe.img_shape.flatten()[:2], keyframe.X_canon[None], keyframe.K
+        #     )
+        #     keyframe.X_canon = X_canon.squeeze(0)
         pW = keyframe.T_WC.act(keyframe.X_canon).cpu().numpy().reshape(-1, 3)
         color = (keyframe.uimg.cpu().numpy() * 255).astype(np.uint8).reshape(-1, 3)
         valid = (

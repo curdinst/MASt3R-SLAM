@@ -1,14 +1,14 @@
-use_calib: False
-used_dataset: "datasets/tum/rgbd_dataset_freiburg1_desk"
-# used_dataset: "datasets/replica/office2"
+use_calib: True
+# used_dataset: "datasets/tum/rgbd_dataset_freiburg1_desk"
+used_dataset: "datasets/replica/office2"
 # used_dataset: "datasets/replica/office1"
 # used_dataset: "datasets/replica/office3"
 # used_dataset: "datasets/replica/room0"
 
 stop_at_frame: 9000
-stop_at_keyframe: 30
+stop_at_keyframe: 10
 run_backend: True
-run_gaussian_optimizer: False
+run_gaussian_optimizer: True
 gaussians:
   init_lr: 0.05 #6.0
   num_iterations: 0

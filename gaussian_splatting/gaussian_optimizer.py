@@ -118,7 +118,6 @@ class GaussianOptimizer:
         self.gaussians = GaussianModel(sh_degree=0)
         #TODO Keep gaussians, only update X_canon
         # self.valid_masks = {}
-        matching_gaussians = None
         num_keyframes = len(keyframes)
         for frame_idx in range(num_keyframes):
             keyframe = keyframes[frame_idx]
@@ -127,26 +126,14 @@ class GaussianOptimizer:
             print(f"self.averaged_masks[frame_idx] {self.averaged_masks[frame_idx].shape}")
             for idx, other_frame in enumerate(keyframe.corresponding_frames.tolist()):
                 print(f"other frame {other_frame} for keyframe {keyframe.frame_id}")
-                # if other_frame != frame_idx-1: continue #TODO remove---------------------------------------
                 if other_frame == -1: break
-                # idx_i2j = einops.rearrange(keyframe.correspondance_masks[idx], "(h w) -> h w", h=self.intrinsics["H"], w=self.intrinsics["W"])
-                # idx_i2j = keyframe.correspondance_masks[idx]
-                # idx_i2j = idx_i2j[keyframe.gaussian_masks[idx,...]]
-                # valid_mask = torch.ones((self.intrinsics["H"] * self.intrinsics["W"]), dtype=torch.bool, device=self.device)
-                # valid_mask[idx_i2j] = False
-                # print(f"averaged_masks keys {self.averaged_masks.keys()}, other_frame {other_frame}")
-                # print(f"self.averaged_masks[other_frame].shape {self.averaged_masks[other_frame]}")
-                # print(f"valid_mask shape {valid_mask.shape}, valid_mask sum {valid_mask.sum()}")
-                valid_mask = ~keyframe.gaussian_masks[idx,...]
+                valid_mask = ~keyframe.valid_match_i[idx,...]
                 self.averaged_masks[other_frame] = self.averaged_masks[other_frame] & valid_mask
                 # TODO: simplify above
 
         for frame_idx in range(num_keyframes):
             keyframe = keyframes[frame_idx]
-            # print(f"viewpoint_stack.keys() {self.viewpoint_stack.keys()}")
-            # if frame_idx in self.viewpoint_stack.keys(): continue
-            # print(f"Adding viewpoint for keyframe {keyframe.frame_id}")
-            # gt_color, gt_depth, gt_pose = dataset[keyframe.frame_id]
+
             viewpoint = Camera(
                 keyframe.frame_id,
                 None,
@@ -175,7 +162,7 @@ class GaussianOptimizer:
                         > c_conf_threshold
                     )
             self.valid_masks[frame_idx] = valid
-            print(f"frame {frame_idx} gaussians valid mask sum {keyframe.gaussian_masks.sum()}")
+            print(f"frame {frame_idx} gaussians valid mask sum {keyframe.valid_match_i.sum()}")
             # if self.config["gaussians"]["use_matching_mask"] and keyframe.gaussian_mask.sum() > 0:
             #     valid_matching_mask = valid & keyframe.gaussian_mask
             # self.valid_masks[frame_idx] = valid
@@ -188,12 +175,6 @@ class GaussianOptimizer:
             # print(f"depth shape {depth.shape}, min {depth.min()}, max {depth.max()}")
             # viewpoint.depth = depth
             viewpoint.original_image = keyframe.img.clone().to(device=self.device)/2.0+0.5
-            # print(f"imgshape {keyframe.img.shape}")
-            # print(f"viewpoint.image_width {viewpoint.image_width}")
-            # print(f"viewpoint.image_height {viewpoint.image_height}")
-            # viewpoint.image_width = self.intrinsics.width
-            # viewpoint.image_height = self.intrinsics.height
-
             if num_keyframes > 1 and frame_idx == num_keyframes - 1 and self.config["gaussians"]["pre_pose_optimization"]:
                 self.tracking(num_keyframes-1, viewpoint, tracking_itr_num=self.tracking_itr_num)
             self.viewpoint_stack[frame_idx] = viewpoint
@@ -205,7 +186,11 @@ class GaussianOptimizer:
             scales_new = (keyframe.T_WC.data[0,-1] * keyframe.scales)
             opacities_new = keyframe.opacities
             w_rotations = quat_mult(keyframe.T_WC.data, keyframe.rotations)
-            w_means = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets)
+            if False & self.config["use_calib"]:
+                X_ray = constrain_points_to_ray(keyframe.img_shape.flatten()[:2], keyframe.X_canon[None], keyframe.K)
+                w_means = keyframe.T_WC.act(X_ray[0,...] + keyframe.offsets)
+            else:
+                w_means = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets)
             sh = keyframe.SH
             if frame_idx > 0 and self.config["gaussians"]["average_correspondances"]:
                 # correspondance_mask = matching_gaussians[-1]
@@ -214,28 +199,32 @@ class GaussianOptimizer:
                 for idx, other_frame in enumerate(keyframe.corresponding_frames.tolist()):
                     if other_frame == -1: break
                     # if other_frame != frame_idx-1: continue #TODO remove---------------------------------------
-                    idx_i2j = keyframe.correspondance_masks[idx]
-                    valid_correspondance = keyframe.gaussian_masks[idx]
+                    idx_j2i = keyframe.idx_j2i[idx]
+                    valid_correspondance = keyframe.valid_match_i[idx]
                     old_keyframe = keyframes[other_frame]
                     print(f"valid_masks[frame_idx] {self.valid_masks[frame_idx].shape}")
                     print(f"valid_masks[frame_idx] {self.valid_masks[frame_idx]}")
-                    print(f"keyframe.gaussian_masks[frame_idx] {keyframe.gaussian_masks.shape}")
-                    print(f"keyframe.gaussian_masks[frame_idx] {keyframe.gaussian_masks[idx]}")
+                    print(f"keyframe.valid_match_i[frame_idx] {keyframe.valid_match_i.shape}")
+                    print(f"keyframe.valid_match_i[frame_idx] {keyframe.valid_match_i[idx]}")
                     print(f"idx {idx}")
-                    to_average = self.valid_masks[frame_idx] & keyframe.gaussian_masks[idx,...]
+                    to_average = valid & keyframe.valid_match_i[idx,...]
                     print(f"to_avg {to_average} to_avg.sum {to_average.sum()}")
                     old_kf_scales = (old_keyframe.T_WC.data[0,-1] * old_keyframe.scales)
                     old_kf_opacities_new = old_keyframe.opacities
                     old_kf_w_rotations = quat_mult(old_keyframe.T_WC.data, old_keyframe.rotations)
-                    old_kf_w_means = old_keyframe.T_WC.act(old_keyframe.X_canon + old_keyframe.offsets)
+                    if False & self.config["use_calib"]:
+                        X_ray = constrain_points_to_ray(old_keyframe.img_shape.flatten()[:2], old_keyframe.X_canon[None], old_keyframe.K)
+                        old_kf_w_means = old_keyframe.T_WC.act(X_ray[0, ...] + old_keyframe.offsets)
+                    else:
+                        old_kf_w_means = old_keyframe.T_WC.act(old_keyframe.X_canon + old_keyframe.offsets)
                     old_kf_sh = old_keyframe.SH
-                    idx_i2j = idx_i2j[to_average]
+                    idx_j2i = idx_j2i[to_average]
                     # a = torch.zeros((self.intrinsics["H"] * self.intrinsics["W"]), dtype=torch.bool, device=self.device)
-                    # a[idx_i2j] = True
-                    # idx_i2j = a
-                    print(f"idx_i2j shape {idx_i2j.shape},\n {idx_i2j.sum()}\n to_average shape {to_average.shape}")
+                    # a[idx_j2i] = True
+                    # idx_j2i = a
+                    print(f"idx_j2i shape {idx_j2i.shape},\n {idx_j2i.sum()}\n to_average shape {to_average.shape}")
                     print("old means shape: ", old_kf_w_means.shape)
-                    # idx_i2j = to_average[idx_i2j]
+                    # idx_j2i = to_average[idx_j2i]
                     old_kf_mask = to_average
                     gaussians_old_kf = (
                         old_kf_w_means[old_kf_mask],
@@ -244,14 +233,7 @@ class GaussianOptimizer:
                         old_kf_scales[old_kf_mask],
                         old_kf_w_rotations[old_kf_mask]
                     )
-                    # to_avg_copy = to_average.clone().detach()
-                    print(f"test")
-                    # print(f"to_avg_copy {to_avg_copy}")
-                    # print(f"averaged_mask shape {w_means.shape}")
-                    # print(f"to_average shape {to_average.shape}")
-                    # print(f"to_avg {to_average}")
-                    # print(f"w_means shape {w_means.shape}, to_average shape {to_average.shape}, valid_correspondance shape {to_average}")
-                    mask_now = idx_i2j
+                    mask_now = idx_j2i
                     gaussians_now = (
                         w_means[mask_now],
                         sh[mask_now],
@@ -280,29 +262,12 @@ class GaussianOptimizer:
                 self.valid_masks[frame_idx] = l1_mask
                 # print(f"l1_loss_mask shape reshaped {l1_loss_mask.shape}")
                 # print(f"l1_mask shape {l1_mask.shape}, l1_mask sum {l1_mask.sum()}")
-            elif (frame_idx == 0 and frame_idx not in self.valid_masks.keys()) or not self.config["gaussians"]["l1_mask"]:
-                self.valid_masks[frame_idx] = valid
+            # elif (frame_idx == 0 and frame_idx not in self.valid_masks.keys()) or not self.config["gaussians"]["l1_mask"]:
+            #     self.valid_masks[frame_idx] = valid
 
             print(f"valid mask keys {self.valid_masks.keys()}")
-            # if self.config["gaussians"]["use_matching_mask"] and frame_idx < num_keyframes - 1:
-            #     corresponding_frames = keyframe.corresponding_frames[keyframe.corresponding_frames!=-1]
-            #     print(f"corresponding_frames: {corresponding_frames}")
-
-            # if self.config["gaussians"]["use_matching_mask"] and frame_idx != 0:
-            #     valid = self.valid_masks[frame_idx] & keyframe.gaussian_mask
-            #     # self.valid_masks[frame_idx] = valid
-            #     to_average = self.valid_masks[frame_idx] & ~keyframe.gaussian_mask
-            #     matching_gaussians = (
-            #         w_means[to_average],
-            #         sh[to_average],
-            #         opacities_new[to_average],
-            #         scales_new[to_average],
-            #         w_rotations[to_average],
-            #         keyframe.correspondance_mask[to_average]
-            #     )
-            # else:
-            #     valid = self.valid_masks[frame_idx]
             valid = valid & self.averaged_masks[frame_idx]
+            self.valid_masks[frame_idx] = valid
             print(f"adding {valid.sum()} points to gaussians")
             self.gaussians.add_points(
                 new_xyz=w_means[valid],
@@ -417,46 +382,46 @@ class GaussianOptimizer:
         # num_valid_list = [valid.sum().item() for valid in self.valid_masks.values()]
         # gauss_indices = [sum(num_valid_list[:i]) for i in range(len(num_valid_list)+1)]
         # print(f"num_valid_list {num_valid_list}, \ngauss_indices {gauss_indices}")
-        # for frame_idx in range(num_keyframes):
-        #     valid = self.valid_masks[frame_idx]
-        #     num_valid = valid.sum()
-        #     print(f"num_valid {num_valid} for frame {frame_idx}")
-        #     # print(f"num gaussians {self.gaussians._xyz.shape}, num_valid {num_valid}")
-        #     # print(f"num_valid: {num_valid} a {self.gaussians._xyz[idx:idx+num_valid].shape}, b {keyframes[frame_idx].X_canon[valid].shape}")
-        #     # idx_0, idx_1 = gauss_indices[frame_idx], gauss_indices[frame_idx + 1]
+        for frame_idx in range(num_keyframes):
+            valid = self.valid_masks[frame_idx]
+            num_valid = valid.sum()
+            print(f"num_valid {num_valid} for frame {frame_idx}")
+            # print(f"num gaussians {self.gaussians._xyz.shape}, num_valid {num_valid}")
+            # print(f"num_valid: {num_valid} a {self.gaussians._xyz[idx:idx+num_valid].shape}, b {keyframes[frame_idx].X_canon[valid].shape}")
+            # idx_0, idx_1 = gauss_indices[frame_idx], gauss_indices[frame_idx + 1]
             
-        #     keyframe = keyframes[frame_idx]
-        #     if num_keyframes > 1 and frame_idx == num_keyframes -1 and self.config["gaussians"]["pre_pose_optimization"]:
-        #         R_CW = self.viewpoint_stack[frame_idx].R
-        #         T_CW = self.viewpoint_stack[frame_idx].T
-        #         T_WC = - R_CW.T @ T_CW
-        #         quat_WC = torch.from_numpy(R.from_matrix(R_CW.T.cpu().numpy()).as_quat()).to(device=self.device)
-        #         print(f"old quat {keyframe.T_WC.data[0,3:7]}, new quat {quat_WC}")
-        #         print(f"old T {keyframe.T_WC.data[0,:3]}, new T {self.viewpoint_stack[frame_idx].T}")
-        #         keyframe.T_WC.data[0,3:7] = quat_WC
-        #         keyframe.T_WC.data[0,:3] = T_WC
-        #     T_CW = keyframe.T_WC.inv()
-        #     # print(f"T_WC {keyframe.T_WC.data}")
-        #     # print(f"T_CW {T_CW.data}")
-        #     scales_w = torch.exp(self.gaussians._scaling[idx:idx+num_valid]) * T_CW.data[0,-1]
-        #     rotations_w = self.gaussians._rotation[idx:idx+num_valid]
-        #     rotations_kf = quat_mult(T_CW.data, rotations_w)
-        #     means_w = T_CW.act(self.gaussians._xyz[idx:idx+num_valid])
+            keyframe = keyframes[frame_idx]
+            if num_keyframes > 1 and frame_idx == num_keyframes -1 and self.config["gaussians"]["pre_pose_optimization"]:
+                R_CW = self.viewpoint_stack[frame_idx].R
+                T_CW = self.viewpoint_stack[frame_idx].T
+                T_WC = - R_CW.T @ T_CW
+                quat_WC = torch.from_numpy(R.from_matrix(R_CW.T.cpu().numpy()).as_quat()).to(device=self.device)
+                print(f"old quat {keyframe.T_WC.data[0,3:7]}, new quat {quat_WC}")
+                print(f"old T {keyframe.T_WC.data[0,:3]}, new T {self.viewpoint_stack[frame_idx].T}")
+                keyframe.T_WC.data[0,3:7] = quat_WC
+                keyframe.T_WC.data[0,:3] = T_WC
+            T_CW = keyframe.T_WC.inv()
+            # print(f"T_WC {keyframe.T_WC.data}")
+            # print(f"T_CW {T_CW.data}")
+            scales_w = torch.exp(self.gaussians._scaling[idx:idx+num_valid]) * T_CW.data[0,-1]
+            rotations_w = self.gaussians._rotation[idx:idx+num_valid]
+            rotations_kf = quat_mult(T_CW.data, rotations_w)
+            means_w = T_CW.act(self.gaussians._xyz[idx:idx+num_valid])
 
-        #     # print("scaling:", self.gaussians._scaling[idx:idx+num_valid])
-        #     # print("scales kf :", keyframes[frame_idx].scales)
-        #     keyframe.update_gaussians(
-        #         valid_mask=valid,
-        #         scale=scales_w,
-        #         rotation=rotations_kf,
-        #         SH=einops.rearrange(self.gaussians._features_dc[idx:idx+num_valid], "wh d c -> wh c d"),
-        #         opacity=self.gaussians._opacity[idx:idx+num_valid],
-        #         mean=means_w,
-        #     )
-        #     keyframes[frame_idx] = keyframe
-        #     idx += num_valid
-        # print(f"num gaussians: {self.gaussians._xyz.shape[0]}, idx: {idx}")
-        # print(f"updated gaussians of {num_keyframes} keyframes")
+            # print("scaling:", self.gaussians._scaling[idx:idx+num_valid])
+            # print("scales kf :", keyframes[frame_idx].scales)
+            keyframe.update_gaussians(
+                valid_mask=valid,
+                scale=scales_w,
+                rotation=rotations_kf,
+                SH=einops.rearrange(self.gaussians._features_dc[idx:idx+num_valid], "wh d c -> wh c d"),
+                opacity=self.gaussians._opacity[idx:idx+num_valid],
+                mean=means_w,
+            )
+            keyframes[frame_idx] = keyframe
+            idx += num_valid
+        print(f"num gaussians: {self.gaussians._xyz.shape[0]}, idx: {idx}")
+        print(f"updated gaussians of {num_keyframes} keyframes")
         if save_results:
             for kf_idx in range(num_keyframes):
                 if self.config["gaussians"]["post_pose_optimization"]:
