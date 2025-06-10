@@ -259,7 +259,7 @@ class GaussianOptimizer:
                         scales_new[mask_now],
                         w_rotations[mask_now]
                     )
-                    gaussians_avg = self.mean_gaussians(gaussians_old_kf, gaussians_now)
+                    gaussians_avg = self.mean_gaussians(gaussians_now, gaussians_old_kf)
                     (
                         w_means[mask_now],
                         sh[mask_now],
@@ -551,6 +551,7 @@ class GaussianOptimizer:
         means_1[inlier_mask] = (means_1[inlier_mask] + means_2[inlier_mask]) / 2.0
         features_dc_1[inlier_mask] = (features_dc_1[inlier_mask] + features_dc_2[inlier_mask]) / 2.0
         opacities_1[inlier_mask] = (opacities_1[inlier_mask] + opacities_2[inlier_mask]) / 2.0
+        # scales_1[inlier_mask] = torch.sqrt((scales_1[inlier_mask]**2 + scales_2[inlier_mask]**2))
         scales_1[inlier_mask] = (scales_1[inlier_mask] + scales_2[inlier_mask]) / 2.0
         rotations_1[inlier_mask] = slerp(rotations_1[inlier_mask], rotations_2[inlier_mask], 0.5)
 
