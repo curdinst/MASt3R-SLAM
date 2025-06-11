@@ -51,10 +51,13 @@ class Frame:
         return score
 
     def update_pointmap(self, X: torch.Tensor, C: torch.Tensor, scale: torch.Tensor=None, rotation: torch.Tensor=None, SH: torch.Tensor=None, opacity: torch.Tensor=None, mean: torch.Tensor=None):
-        filtering_mode = config["tracking"]["filtering_mode"]
-        # filtering_mode = "first"
         # if config["use_calib"]:
-        #         X = constrain_points_to_ray(self.img_shape.flatten()[:2], X[None], self.K)[0,...]
+            # print(f"self.img_shape: {self.img_shape}")
+            # print(f"self.K: {self.K}")
+            # X = constrain_points_to_ray(self.img_shape[0,...], X[None, ...], self.K)[0, ...]
+
+        
+        filtering_mode = config["tracking"]["filtering_mode"]
         if self.N == 0:
             self.X_canon = X.clone()
             self.C = C.clone()
@@ -171,11 +174,14 @@ class Frame:
         #     self.N_guass = 1
         #     self.N_gauss_updates = 1
         #     return
-        
+        if config["use_calib"]:
+            X_canon = constrain_points_to_ray(self.img_shape[0,...], self.X_canon[None, ...], self.K)[0, ...]
+        else:
+            X_canon = self.X_canon
         if filtering_mode == "recent":
             self.SH[valid_mask] = SH.clone()
             self.opacities[valid_mask] = opacity.clone()
-            self.offsets[valid_mask] = mean.clone() - self.X_canon[valid_mask] # only store offsets
+            self.offsets[valid_mask] = mean.clone() - X_canon[valid_mask] # only store offsets
             self.rotations[valid_mask] = rotation.clone()
             self.scales[valid_mask] = scale.clone()
         # elif filtering_mode == "weighted_pointmap":
@@ -209,7 +215,7 @@ class Frame:
 
 
 
-def create_frame(i, img, T_WC, img_size=512, device="cuda:0"):
+def create_frame(i, img, T_WC, img_size=512, device="cuda:0", K=None):
     img = resize_img(img, img_size)
     rgb = img["img"].to(device=device)
     img_shape = torch.tensor(img["true_shape"], device=device)
@@ -219,7 +225,7 @@ def create_frame(i, img, T_WC, img_size=512, device="cuda:0"):
     if downsample > 1:
         uimg = uimg[::downsample, ::downsample]
         img_shape = img_shape // downsample
-    frame = Frame(i, rgb, img_shape, img_true_shape, uimg, T_WC)
+    frame = Frame(i, rgb, img_shape, img_true_shape, uimg, T_WC, K=K)
     return frame
 
 

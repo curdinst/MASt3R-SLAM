@@ -186,7 +186,7 @@ class GaussianOptimizer:
             scales_new = (keyframe.T_WC.data[0,-1] * keyframe.scales)
             opacities_new = keyframe.opacities
             w_rotations = quat_mult(keyframe.T_WC.data, keyframe.rotations)
-            if False & self.config["use_calib"]:
+            if self.config["use_calib"]:
                 X_ray = constrain_points_to_ray(keyframe.img_shape.flatten()[:2], keyframe.X_canon[None], keyframe.K)
                 w_means = keyframe.T_WC.act(X_ray[0,...] + keyframe.offsets)
             else:
@@ -212,7 +212,7 @@ class GaussianOptimizer:
                     old_kf_scales = (old_keyframe.T_WC.data[0,-1] * old_keyframe.scales)
                     old_kf_opacities_new = old_keyframe.opacities
                     old_kf_w_rotations = quat_mult(old_keyframe.T_WC.data, old_keyframe.rotations)
-                    if False & self.config["use_calib"]:
+                    if self.config["use_calib"]:
                         X_ray = constrain_points_to_ray(old_keyframe.img_shape.flatten()[:2], old_keyframe.X_canon[None], old_keyframe.K)
                         old_kf_w_means = old_keyframe.T_WC.act(X_ray[0, ...] + old_keyframe.offsets)
                     else:

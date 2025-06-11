@@ -191,7 +191,8 @@ class FactorGraph:
 
         # Constrain points to ray
         img_size = self.frames[0].img.shape[-2:]
-        # Xs = constrain_points_to_ray(img_size, Xs, K)
+        print("img_size:", img_size)
+        Xs = constrain_points_to_ray(img_size, Xs, K)
 
         ii, jj, idx_ii2jj, valid_match, Q_ii2jj = self.prep_two_way_edges()
 

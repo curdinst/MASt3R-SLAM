@@ -316,7 +316,7 @@ if __name__ == "__main__":
             if i == 0
             else states.get_frame().T_WC
         )
-        frame = create_frame(i, img, T_WC, img_size=dataset.img_size, device=device)
+        frame = create_frame(i, img, T_WC, img_size=dataset.img_size, device=device, K=K)
 
         if mode == Mode.INIT:
             # Initialize via mono inference, and encoded features neeed for database
@@ -413,7 +413,7 @@ if __name__ == "__main__":
             dataset.timestamps,
             tracker.poses,
         )
-    save_gaussian_map = True
+    save_gaussian_map = False
     if save_gaussian_map:
         gaussian_opt = GaussianOptimizer(config, dataset, device)
         gaussian_opt.save_results(save_dir, keyframes)
