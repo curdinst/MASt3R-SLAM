@@ -200,7 +200,13 @@ if __name__ == "__main__":
     
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
     dataset_name = config["used_dataset"].split("/")[1] + "_" + config["used_dataset"].split("/")[-1]
-    folder_name = timestamp + f"_{dataset_name}_{config['gaussians']['num_iterations']}_it_window{config['gaussians']['window_size']}"
+    calib = "calib" if config["use_calib"] else "no_calib"
+    avg = "avg" if config["gaussians"]["average_correspondances"] else "no_avg"
+    l1_mask = "l1_mask" if config["gaussians"]["l1_mask"] else "no_l1_mask"
+    if config["gaussians"]["num_iterations"] > 0:
+        folder_name = timestamp + f"_{dataset_name}_{dataset_name}_{calib}_{avg}_{l1_mask}_{config['gaussians']['num_iterations']}_it_w{config['gaussians']['window_size']}"
+    else:
+        folder_name = timestamp + f"_{dataset_name}_{calib}_{avg}_{l1_mask}"
     path = pathlib.Path(f"logs/")
     save_dir = path / folder_name
     os.makedirs(save_dir, exist_ok=True)
@@ -402,9 +408,7 @@ if __name__ == "__main__":
         eval.save_keyframes(
             save_dir / "keyframes" / seq_name, dataset.timestamps, keyframes
         )
-    if config["run_backend"]:
-        backend.join()
-        
+
     save_frame_poses = True
     if save_frame_poses:
         eval.save_frame_poses(
@@ -413,7 +417,7 @@ if __name__ == "__main__":
             dataset.timestamps,
             tracker.poses,
         )
-    save_gaussian_map = False
+    save_gaussian_map = not config["run_gaussian_optimizer"]
     if save_gaussian_map:
         gaussian_opt = GaussianOptimizer(config, dataset, device)
         gaussian_opt.save_results(save_dir, keyframes)
@@ -434,7 +438,8 @@ if __name__ == "__main__":
             cv2.imwrite(f"{savedir}/{i}.png", frame)
 
     print("done")
-
+    if config["run_backend"]:
+        backend.join()
     if config["run_gaussian_optimizer"]:
         gaussian_optimizer.join()
     if not args.no_viz:
