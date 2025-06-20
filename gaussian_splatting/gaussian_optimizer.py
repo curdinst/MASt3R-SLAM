@@ -251,15 +251,18 @@ class GaussianOptimizer:
                     ) = gaussians_avg
 
             l1_mask = torch.ones_like(valid, dtype=torch.bool, device=self.device)
-            if self.config["gaussians"]["l1_mask"] and frame_idx not in self.valid_masks.keys() and frame_idx > 0:
+            if self.config["gaussians"]["l1_mask"] and frame_idx > 0:
                 print(f"get l1 mask for frame {frame_idx}")
                 render_pkg = render(self.viewpoint_stack[frame_idx], self.gaussians, self.pipeline_params, self.background)
                 image = render_pkg["render"]
+                # Save the rendered image for debugging or visualization
                 # ssim_loss_val = ssim(image, self.viewpoint_stack[frame_idx].original_image)
                 # l1_loss_val = l1_loss(image, self.viewpoint_stack[frame_idx].original_image)
                 l1_threshold = self.config["gaussians"]["l1_threshold"]
                 l1_loss_img = torch.abs(image - self.viewpoint_stack[frame_idx].original_image).mean(dim=0).reshape(-1)
-                l1_mask = valid * (l1_loss_img > l1_threshold)
+                l1_mask = (l1_loss_img > l1_threshold)
+                # Save l1_mask as an image for debugging or visualization
+
                 # self.valid_masks[frame_idx] = l1_mask
                 # print(f"l1_loss_mask shape reshaped {l1_loss_mask.shape}")
                 # print(f"l1_mask shape {l1_mask.shape}, l1_mask sum {l1_mask.sum()}")

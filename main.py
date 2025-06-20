@@ -390,6 +390,15 @@ if __name__ == "__main__":
             states.set_mode(Mode.TERMINATED)
             break
 
+    # Save FPS, duration, and number of iterations to a text file
+    time_now = time.time()
+    FPS = i / (time_now - fps_timer)
+    duration = time_now - fps_timer
+
+    with open(save_dir / f"performance_{FPS:.2f}_FPS.txt", "w") as f:
+        f.write("FPS: {:.2f}\n".format(FPS))
+        f.write("Duration: {:.2f} seconds\n".format(duration))
+        f.write("Number of Iterations: {}\n".format(i))
     date = datetime_now.split(":")[0]
     min = datetime_now.split(":")[1]
     sec = datetime_now.split(":")[-1].split(".")[0]
