@@ -8,6 +8,7 @@ from mast3r_slam.mast3r_utils import (
     load_mast3r,
     load_retriever,
     mast3r_inference_mono,
+    resize_img,
 )
 import lietorch
 from mast3r_slam.dataloader import Intrinsics, load_dataset
@@ -40,6 +41,7 @@ from gaussian_splatting.utils.slam_utils import get_loss_tracking_rgb, get_loss_
 from gaussian_splatting.utils.image_utils import psnr
 from munch import munchify
 from torchvision.utils import save_image
+from mast3r_slam.utils import sh_utils
 
 
 reduced = False
@@ -224,9 +226,23 @@ def covariance_to_quaternion_and_scale(covariance):
 
         return quaternion, scale
 
+@torch.inference_mode
+def decoder(model, feat1, feat2, pos1, pos2, shape1, shape2):
+    dec1, dec2 = model._decoder(feat1, pos1, feat2, pos2)
+    with torch.amp.autocast(enabled=False, device_type="cuda"):
+        res1 = model._downstream_head(1, [tok.float() for tok in dec1], shape1)
+        res2 = model._downstream_head(2, [tok.float() for tok in dec2], shape2)
+    return res1, res2
 print(f"frame1 img shape: {frame1.img.shape}")
 image1 = einops.rearrange(frame1.img, "b c h w ->(b c) h w")
 image1 = image1*0.5 + 0.5
+gt_img_rearranged = einops.rearrange(image1.cpu().detach().numpy(), "c h w -> h w c")
+a,b = np.min(gt_img_rearranged), np.max(gt_img_rearranged)
+plt.figure()
+plt.imshow((gt_img_rearranged- a)/(b-a))
+plt.title("Ground Truth Image")
+plt.savefig(f"logs/gt_image1.png")
+plt.close()
 
 print(f"image1 max: {image1.max()}, min: {image1.min()}")
 # plt.imsave("logs/feat1.png", image1)
@@ -235,10 +251,106 @@ print(f"image1 max: {image1.max()}, min: {image1.min()}")
 # pred1['covariances'] = geometry.build_covariance(pred1['scales'], pred1['rotations'])
 # pred2 = model._downstream_head(2, [tok.float() for tok in dec2], shape2)
 # X, C, D, Q, S, R, SH, O, M = mast3r_asymmetric_inference(model=model, frame_i=frame1, frame_j=frame2)
+frame_i = frame1
+frame_j = frame2
 
-# frame2.img = einops.rearrange(frame2.img, "b c h w ->(b c) h w")
-idx_i2j, valid_match_j, Xii, Cii, Qii, Xji, Cji, Qji, gaussian_params = mast3r_match_asymmetric(model=model, frame_i=frame1, frame_j=frame2)
-(Sii, Rii, SHii, Oii, Mii, Sji, Rji, SHji, Oji, Mji) = gaussian_params
+frame_i.feat, frame_i.pos, _ = model._encode_image(
+    frame_i.img, frame_i.img_true_shape
+)
+frame_j.feat, frame_j.pos, _ = model._encode_image(
+    frame_j.img, frame_j.img_true_shape
+)
+
+feat1, feat2 = frame_i.feat, frame_j.feat
+
+print(f"feat1 shape: {feat1.shape}, feat2 shape: {feat2.shape}")
+pos1, pos2 = frame_i.pos, frame_j.pos
+print(f"pos1 shape: {pos1.shape}, pos2 shape: {pos2.shape}")
+print(pos1)
+shape1, shape2 = frame_i.img_true_shape, frame_j.img_true_shape
+
+feat1_2d = einops.rearrange(feat1, "b (h w) d -> b h w d", h=H//16, w=W//16)
+feat2_2d = einops.rearrange(feat2, "b (h w) d -> b h w d", h=H//16, w=W//16)
+
+dim_w = W//16
+feat1_a = feat1_2d[:,::2,::2,:]
+feat1_b = feat1_2d[:,1::2,::2,:]
+feat1_c = feat1_2d[:,::2,1::2,:]
+feat1_d = feat1_2d[:,1::2,1::2,:]
+
+feat2_a = feat2_2d[:,::2,::2,:]
+feat2_b = feat2_2d[:,1::2,::2,:]
+feat2_c = feat2_2d[:,::2,1::2,:]
+feat2_d = feat2_2d[:,1::2,1::2,:]
+
+feat1_mean = (feat1_a + feat1_b + feat1_c + feat1_d) / 4.0
+feat2_mean = (feat2_a + feat2_b + feat2_c + feat2_d) / 4.0
+feat1_downsampled_1d = einops.rearrange(feat1_mean, "b h w d -> b (h w) d")
+feat2_downsampled_1d = einops.rearrange(feat2_mean, "b h w d -> b (h w) d")
+pos_downsampled = torch.stack(torch.meshgrid(torch.arange(9, device=device), torch.arange(16, device=device), indexing='ij'), dim=-1).reshape(-1, 2).unsqueeze(0)
+print(f"feat_a shape: {feat1_a.shape}")
+print(f"pos downsampled: {pos_downsampled}")
+print(f"pos downsampled shape: {pos_downsampled.shape}")
+print(f"shape1: {shape1}, shape2: {shape2}")
+shape_downsampled = torch.tensor([[H//2, W//2]]).to(device=device)
+print(f"shape_downsampled: {shape_downsampled}")
+
+res11, res21 = decoder(model, feat1_downsampled_1d, feat2_downsampled_1d, pos_downsampled, pos_downsampled, shape_downsampled, shape_downsampled)
+res = [res11, res21]
+X, C, D, Q, S, R, SH, O, M  = zip(
+    *[(r["pts3d"][0], r["conf"][0], r["desc"][0], r["desc_conf"][0], r["scales"][0], r["rotations"][0], r["sh"][0], r["opacities"][0], r["means"][0]) for r in res]
+)
+X, C, D, Q = torch.stack(X), torch.stack(C), torch.stack(D), torch.stack(Q)
+S, R, SH, O, M = torch.stack(S), torch.stack(R), torch.stack(SH), torch.stack(O), torch.stack(M)
+b, h, w = X.shape[:-1]
+# 2 outputs per inference
+b = b // 2
+
+Xii, Xji = X[:b], X[b:]
+Cii, Cji = C[:b], C[b:]
+Dii, Dji = D[:b], D[b:]
+Qii, Qji = Q[:b], Q[b:]
+
+# How rest of system expects it
+Xii, Xji = einops.rearrange(X, "b h w c -> b (h w) c")
+Cii, Cji = einops.rearrange(C, "b h w -> b (h w) 1")
+Dii, Dji = einops.rearrange(D, "b h w c -> b (h w) c")
+Qii, Qji = einops.rearrange(Q, "b h w -> b (h w) 1")
+
+Sii, Sji = einops.rearrange(S, "b h w c -> b (h w) c")
+Rii, Rji = einops.rearrange(R, "b h w c -> b (h w) c")
+SHii, SHji = einops.rearrange(SH, "b h w c d -> b (h w) c d")
+Oii, Oji = einops.rearrange(O, "b h w c -> b (h w) c")
+Mii, Mji = einops.rearrange(M, "b h w c -> b (h w) c")
+
+# add frame colors to sh colors
+new_sh1 = torch.zeros_like(SHii)
+new_sh2 = torch.zeros_like(SHji)
+frame_i_img = einops.rearrange(frame_i.img, "b c h w -> (b h) w c").cpu().detach().numpy()
+frame_j_img = einops.rearrange(frame_j.img, "b c h w -> (b h) w c").cpu().detach().numpy()
+# img1_downsamped = resize_img(frame_i_img, W//2)["img"].to(device=device)
+img1_downsampled = F.avg_pool2d(image1.unsqueeze(0), kernel_size=2, stride=2).squeeze(0)
+
+img2_downsamped = resize_img(frame_j_img, W//2)["img"].to(device=device)
+new_sh1[..., 0] = sh_utils.RGB2SH(einops.rearrange(img1_downsampled, '(b c) h w -> b (h w) c', b=1))
+new_sh2[..., 0] = sh_utils.RGB2SH(einops.rearrange(img2_downsamped/2.0+0.5, 'b c h w -> b (h w) c'))
+SHii = SHii + new_sh1
+SHji = SHji + new_sh2
+H, W = H // 2, W // 2
+# image1_rearranged = einops.rearrange(frame_i.img, "b c h w -> (b h) w c")
+# image1 = resize_img(image1_rearranged.cpu().detach().numpy(), W)["img"].squeeze(0).to(device=device)
+# image1 = einops.rearrange(img1_downsamped/2.0+0.5, 'b c h w -> c (b h) w')
+image1 = img1_downsampled
+print(f"image1 shape: {image1.shape}, image1 max: {image1.max()}, min: {image1.min()}")
+# gt_img_rearranged = einops.rearrange(image1.cpu().detach().numpy(), "c h w -> h w c")
+# a,b = np.min(gt_img_rearranged), np.max(gt_img_rearranged)
+# plt.figure()
+# plt.imshow((gt_img_rearranged- a)/(b-a))
+# plt.title("Ground Truth Image")
+# plt.savefig(f"logs/gt_image1.png")
+# plt.close()
+# idx_i2j, valid_match_j, Xii, Cii, Qii, Xji, Cji, Qji, gaussian_params = mast3r_match_asymmetric(model=model, frame_i=frame1, frame_j=frame2)
+# (Sii, Rii, SHii, Oii, Mii, Sji, Rji, SHji, Oji, Mji) = gaussian_params
 
 save_dir = pathlib.Path("logs")
 save_dir.mkdir(exist_ok=True, parents=True)
@@ -274,91 +386,91 @@ v = indices[:, 1] * 2
 print(f"u shape: {u.shape}, v shape: {v.shape}")
 # print(f"max u {u.max()}, max v {v.max()}")
 
-mean1, mean2, mean3, mean4 = means[:, u, v], means[:, u, v+1], means[:, u+1, v], means[:, u+1, v+1]
-# Fit a plane over the four mean points
-# The plane equation is ax + by + cz + d = 0
-# We solve for [a, b, c, d] using the four points
-# Stack the four mean points into a matrix
-# points = torch.stack((mean1, mean2, mean3, mean4), dim=1)  # Shape: (3, 4)
-# # Add a row of ones for the homogeneous coordinates
-# points_h = torch.cat((points, torch.ones(1, 4, device=device)), dim=0)  # Shape: (4, 4)
-# # Perform SVD to find the null space of the matrix
-# _, _, V = torch.linalg.svd(points_h.T)
-# plane_coeffs = V[-1]  # The last row of V corresponds to the null space
-# # Normalize the plane coefficients
-# plane_coeffs /= torch.norm(plane_coeffs[:3])
-# # Extract the plane parameters
-# a, b, c, d = plane_coeffs
+# mean1, mean2, mean3, mean4 = means[:, u, v], means[:, u, v+1], means[:, u+1, v], means[:, u+1, v+1]
+# # Fit a plane over the four mean points
+# # The plane equation is ax + by + cz + d = 0
+# # We solve for [a, b, c, d] using the four points
+# # Stack the four mean points into a matrix
+# # points = torch.stack((mean1, mean2, mean3, mean4), dim=1)  # Shape: (3, 4)
+# # # Add a row of ones for the homogeneous coordinates
+# # points_h = torch.cat((points, torch.ones(1, 4, device=device)), dim=0)  # Shape: (4, 4)
+# # # Perform SVD to find the null space of the matrix
+# # _, _, V = torch.linalg.svd(points_h.T)
+# # plane_coeffs = V[-1]  # The last row of V corresponds to the null space
+# # # Normalize the plane coefficients
+# # plane_coeffs /= torch.norm(plane_coeffs[:3])
+# # # Extract the plane parameters
+# # a, b, c, d = plane_coeffs
 
-# print(f"Plane equation: {a:.4f}x + {b:.4f}y + {c:.4f}z + {d:.4f} = 0")
-fused_means = (means[:, u, v] + means[:, u, v+1] + means[:, u+1, v] + means[:, u+1, v+1]) / 4.0
-fused_opacities = (opacities[:, u, v] + opacities[:, u, v+1] + opacities[:, u+1, v] + opacities[:, u+1, v+1]) / 4.0
-fused_covariances = (covariances[u, v, ...] + covariances[u, v+1, ...] + covariances[u+1, v, ...] + covariances[u+1, v+1, ...]) * scale_factor
-print(fused_covariances)
-fused_sh = (spherical_harmonics[:, u, v] + spherical_harmonics[:, u, v+1] + spherical_harmonics[:, u+1, v] + spherical_harmonics[:, u+1, v+1]) / 4.0
-fused_scales = (scales[:, u, v] + scales[:, u, v+1] + scales[:, u+1, v] + scales[:, u+1, v+1]) * scale_factor
-quat1, quat2, quat3, quat4 = rotations[:, u, v], rotations[:, u, v+1], rotations[:, u+1, v], rotations[:, u+1, v+1]
-quats = torch.stack((quat1, quat2, quat3, quat4), dim=1).permute(2, 0, 1)
-print(f"quats shape: {quats.shape}")
-print(f"quats: {quats}")
-print(f"scales: {scales[:, u, v].max()}, {scales[:, u, v].min()}")
-fused_rotations = average_quaternions(quats)
-# fused_rotations = (quat1 + quat2 + quat3 + quat4) / 4.0
+# # print(f"Plane equation: {a:.4f}x + {b:.4f}y + {c:.4f}z + {d:.4f} = 0")
+# fused_means = (means[:, u, v] + means[:, u, v+1] + means[:, u+1, v] + means[:, u+1, v+1]) / 4.0
+# fused_opacities = (opacities[:, u, v] + opacities[:, u, v+1] + opacities[:, u+1, v] + opacities[:, u+1, v+1]) / 4.0
+# fused_covariances = (covariances[u, v, ...] + covariances[u, v+1, ...] + covariances[u+1, v, ...] + covariances[u+1, v+1, ...]) * scale_factor
+# print(fused_covariances)
+# fused_sh = (spherical_harmonics[:, u, v] + spherical_harmonics[:, u, v+1] + spherical_harmonics[:, u+1, v] + spherical_harmonics[:, u+1, v+1]) / 4.0
+# fused_scales = (scales[:, u, v] + scales[:, u, v+1] + scales[:, u+1, v] + scales[:, u+1, v+1]) * scale_factor
+# quat1, quat2, quat3, quat4 = rotations[:, u, v], rotations[:, u, v+1], rotations[:, u+1, v], rotations[:, u+1, v+1]
+# quats = torch.stack((quat1, quat2, quat3, quat4), dim=1).permute(2, 0, 1)
+# print(f"quats shape: {quats.shape}")
+# print(f"quats: {quats}")
+# print(f"scales: {scales[:, u, v].max()}, {scales[:, u, v].min()}")
+# fused_rotations = average_quaternions(quats)
+# # fused_rotations = (quat1 + quat2 + quat3 + quat4) / 4.0
 
-# fused_means = means[:, u, v]
-# fused_opacities = opacities[:, u, v]
-# fused_sh = spherical_harmonics[:, u, v]
-# fused_scales = scales[:, u, v]
-fused_rotations= rotations[:, u, v]
-fused_rotations = einops.rearrange(fused_rotations, "c n -> n c")
-print(f"fused_rotations shape: {fused_rotations.shape}")
+# # fused_means = means[:, u, v]
+# # fused_opacities = opacities[:, u, v]
+# # fused_sh = spherical_harmonics[:, u, v]
+# # fused_scales = scales[:, u, v]
+# fused_rotations= rotations[:, u, v]
+# fused_rotations = einops.rearrange(fused_rotations, "c n -> n c")
+# print(f"fused_rotations shape: {fused_rotations.shape}")
 
-print("Fused means shape:", fused_means.shape)
+# print("Fused means shape:", fused_means.shape)
 
-fused_means = einops.rearrange(fused_means, "c n -> n c")
-fused_opacities = einops.rearrange(fused_opacities, "c n-> n c")
-fused_sh = einops.rearrange(fused_sh, "c n -> n c")
-# print(f"fused_menas {fused_means}")
-fused_scales = einops.rearrange(fused_scales, "c n -> n c")
-print(f"fused_scales shape: {fused_scales.shape}")
+# fused_means = einops.rearrange(fused_means, "c n -> n c")
+# fused_opacities = einops.rearrange(fused_opacities, "c n-> n c")
+# fused_sh = einops.rearrange(fused_sh, "c n -> n c")
+# # print(f"fused_menas {fused_means}")
+# fused_scales = einops.rearrange(fused_scales, "c n -> n c")
+# print(f"fused_scales shape: {fused_scales.shape}")
 
-# fused_sh[:, 0] += 5.0
+# # fused_sh[:, 0] += 5.0
 
-original_means = means[:, ~mask_upsampled]
-original_opacities = opacities[:, ~mask_upsampled]
-original_covariances = covariances[~mask_upsampled, ...]
-original_sh = spherical_harmonics[:, ~mask_upsampled]
-original_scales = scales[:, ~mask_upsampled]
-original_rotations = rotations[:, ~mask_upsampled]
+# original_means = means[:, ~mask_upsampled]
+# original_opacities = opacities[:, ~mask_upsampled]
+# original_covariances = covariances[~mask_upsampled, ...]
+# original_sh = spherical_harmonics[:, ~mask_upsampled]
+# original_scales = scales[:, ~mask_upsampled]
+# original_rotations = rotations[:, ~mask_upsampled]
 
-# original_means = einops.rearrange(means, "xyz h w -> xyz (h w)")
-# original_opacities = einops.rearrange(opacities, "o h w -> o (h w)")
-# original_covariances = einops.rearrange(covariances, "h w x y -> (h w) x y")
-# original_sh = einops.rearrange(spherical_harmonics, "c h w -> c (h w)")
+# # original_means = einops.rearrange(means, "xyz h w -> xyz (h w)")
+# # original_opacities = einops.rearrange(opacities, "o h w -> o (h w)")
+# # original_covariances = einops.rearrange(covariances, "h w x y -> (h w) x y")
+# # original_sh = einops.rearrange(spherical_harmonics, "c h w -> c (h w)")
 
-original_means = einops.rearrange(original_means, "c n -> n c")
-original_opacities = einops.rearrange(original_opacities, "c n-> n c")
-original_sh = einops.rearrange(original_sh, "c n -> n c")
-original_scales = einops.rearrange(original_scales, "c n -> n c")
-original_rotations = einops.rearrange(original_rotations, "c n -> n c")
+# original_means = einops.rearrange(original_means, "c n -> n c")
+# original_opacities = einops.rearrange(original_opacities, "c n-> n c")
+# original_sh = einops.rearrange(original_sh, "c n -> n c")
+# original_scales = einops.rearrange(original_scales, "c n -> n c")
+# original_rotations = einops.rearrange(original_rotations, "c n -> n c")
 
-reduced_means = torch.cat((fused_means, original_means), dim=0)
-reduced_opacities = torch.cat((fused_opacities, original_opacities), dim=0)
-reduced_sh = torch.cat((fused_sh, original_sh), dim=0)
-reduced_covariances = torch.cat((fused_covariances, original_covariances), dim=0)
-reduced_scales = torch.cat((fused_scales, original_scales), dim=0)
-reduced_rotations = torch.cat((fused_rotations, original_rotations), dim=0)
-num_gaussians = reduced_means.shape[0]
-num_gaussians_original = Xii.shape[0]
-# save_as_ply(pred1, pred1, recon_file)
-print(f"SHii shape: {SHii.shape}")
-reduced_sh = einops.rearrange(reduced_sh, "n c -> n c 1")
-print(f"reduced_sh shape: {reduced_sh.shape}")
-print(f"reduced_covariances shape: {reduced_covariances.shape}")
-reduced_rotations, reduced_scales = covariance_to_quaternion_and_scale(reduced_covariances)
+# reduced_means = torch.cat((fused_means, original_means), dim=0)
+# reduced_opacities = torch.cat((fused_opacities, original_opacities), dim=0)
+# reduced_sh = torch.cat((fused_sh, original_sh), dim=0)
+# reduced_covariances = torch.cat((fused_covariances, original_covariances), dim=0)
+# reduced_scales = torch.cat((fused_scales, original_scales), dim=0)
+# reduced_rotations = torch.cat((fused_rotations, original_rotations), dim=0)
+# num_gaussians = reduced_means.shape[0]
+# num_gaussians_original = Xii.shape[0]
+# # save_as_ply(pred1, pred1, recon_file)
+# print(f"SHii shape: {SHii.shape}")
+# reduced_sh = einops.rearrange(reduced_sh, "n c -> n c 1")
+# print(f"reduced_sh shape: {reduced_sh.shape}")
+# print(f"reduced_covariances shape: {reduced_covariances.shape}")
+# reduced_rotations, reduced_scales = covariance_to_quaternion_and_scale(reduced_covariances)
 
-# cov_test = geometry.build_covariance(Sii, Rii)
-# Rii, Sii = covariance_to_quaternion_and_scale(cov_test)
+# # cov_test = geometry.build_covariance(Sii, Rii)
+# # Rii, Sii = covariance_to_quaternion_and_scale(cov_test)
 
 if not reduced: 
     num_gaussians_original = Sii.shape[0]
@@ -433,7 +545,6 @@ else:
 K_frame = dataset.camera_intrinsics.K_frame
 print(f"K_frame {K_frame}")
 downsampling_factor = 0.5 if W == 256 else 1.0
-downsampling_factor = 1.0
 fx = K_frame[0, 0] * downsampling_factor
 fy = K_frame[1, 1] * downsampling_factor
 cx = K_frame[0, 2] * downsampling_factor
