@@ -2,6 +2,7 @@ import random
 import time
 
 import torch
+from torch import nn
 import torch.multiprocessing as mp
 import numpy as np
 import einops
@@ -284,7 +285,18 @@ class GaussianOptimizer:
             # self.gaussians.load_ply("/home/curdinst/repos/MASt3R-SLAM/logs/rgbd_dataset_freiburg1_desk_2025-04-17_09-48-43_wa.ply")
             # print(f"num_gaussians: {self.gaussians._xyz.shape}")
             # break
-        
+        if self.config["gaussians"]["voxel_reduction"]:
+            gaussians = self.reduce_gaussians_with_voxels(
+                positions=self.gaussians._xyz,
+                scales=self.gaussians._scaling,
+                rotations=self.gaussians._rotation,
+                sh_coeffs=self.gaussians._features_dc,
+                opacities=self.gaussians._opacity,
+                voxel_size=self.config["gaussians"]["voxel_size"]
+            )
+            self.gaussians._xyz, self.gaussians._scaling, self.gaussians._rotation, self.gaussians._features_dc, self.gaussians._opacity = gaussians
+            self.gaussians._features_rest = nn.Parameter(torch.zeros((self.gaussians._features_dc.shape[0],0,3), dtype=self.dtype, device=self.device))
+
         # render_pkg = render(viewpoint, self.gaussians, self.pipeline_params, self.background)
         # image = render_pkg["render"]
         # print(f"image render shape {image.shape}")
@@ -379,50 +391,46 @@ class GaussianOptimizer:
             self.draw_cameras()
         # print(f"num gaussians 3333: {self.gaussians._xyz.shape[0]}")
 
-        # Overwrite
-        idx = 0
+        # # Overwrite
+        # idx = 0
         # for frame_idx in range(num_keyframes):
-        # num_valid_list = [valid.sum().item() for valid in self.valid_masks.values()]
-        # gauss_indices = [sum(num_valid_list[:i]) for i in range(len(num_valid_list)+1)]
-        # print(f"num_valid_list {num_valid_list}, \ngauss_indices {gauss_indices}")
-        for frame_idx in range(num_keyframes):
-            valid = self.valid_masks[frame_idx]
-            num_valid = valid.sum()
-            print(f"num_valid {num_valid} for frame {frame_idx}")
-            # print(f"num gaussians {self.gaussians._xyz.shape}, num_valid {num_valid}")
-            # print(f"num_valid: {num_valid} a {self.gaussians._xyz[idx:idx+num_valid].shape}, b {keyframes[frame_idx].X_canon[valid].shape}")
-            # idx_0, idx_1 = gauss_indices[frame_idx], gauss_indices[frame_idx + 1]
+        #     valid = self.valid_masks[frame_idx]
+        #     num_valid = valid.sum()
+        #     print(f"num_valid {num_valid} for frame {frame_idx}")
+        #     # print(f"num gaussians {self.gaussians._xyz.shape}, num_valid {num_valid}")
+        #     # print(f"num_valid: {num_valid} a {self.gaussians._xyz[idx:idx+num_valid].shape}, b {keyframes[frame_idx].X_canon[valid].shape}")
+        #     # idx_0, idx_1 = gauss_indices[frame_idx], gauss_indices[frame_idx + 1]
             
-            keyframe = keyframes[frame_idx]
-            if num_keyframes > 1 and frame_idx == num_keyframes -1 and self.config["gaussians"]["pre_pose_optimization"]:
-                R_CW = self.viewpoint_stack[frame_idx].R
-                T_CW = self.viewpoint_stack[frame_idx].T
-                T_WC = - R_CW.T @ T_CW
-                quat_WC = torch.from_numpy(R.from_matrix(R_CW.T.cpu().numpy()).as_quat()).to(device=self.device)
-                print(f"old quat {keyframe.T_WC.data[0,3:7]}, new quat {quat_WC}")
-                print(f"old T {keyframe.T_WC.data[0,:3]}, new T {self.viewpoint_stack[frame_idx].T}")
-                keyframe.T_WC.data[0,3:7] = quat_WC
-                keyframe.T_WC.data[0,:3] = T_WC
-            T_CW = keyframe.T_WC.inv()
-            # print(f"T_WC {keyframe.T_WC.data}")
-            # print(f"T_CW {T_CW.data}")
-            scales_w = torch.exp(self.gaussians._scaling[idx:idx+num_valid]) * T_CW.data[0,-1]
-            rotations_w = self.gaussians._rotation[idx:idx+num_valid]
-            rotations_kf = quat_mult(T_CW.data, rotations_w)
-            means_w = T_CW.act(self.gaussians._xyz[idx:idx+num_valid])
+        #     keyframe = keyframes[frame_idx]
+        #     if num_keyframes > 1 and frame_idx == num_keyframes -1 and self.config["gaussians"]["pre_pose_optimization"]:
+        #         R_CW = self.viewpoint_stack[frame_idx].R
+        #         T_CW = self.viewpoint_stack[frame_idx].T
+        #         T_WC = - R_CW.T @ T_CW
+        #         quat_WC = torch.from_numpy(R.from_matrix(R_CW.T.cpu().numpy()).as_quat()).to(device=self.device)
+        #         print(f"old quat {keyframe.T_WC.data[0,3:7]}, new quat {quat_WC}")
+        #         print(f"old T {keyframe.T_WC.data[0,:3]}, new T {self.viewpoint_stack[frame_idx].T}")
+        #         keyframe.T_WC.data[0,3:7] = quat_WC
+        #         keyframe.T_WC.data[0,:3] = T_WC
+        #     T_CW = keyframe.T_WC.inv()
+        #     # print(f"T_WC {keyframe.T_WC.data}")
+        #     # print(f"T_CW {T_CW.data}")
+        #     scales_w = torch.exp(self.gaussians._scaling[idx:idx+num_valid]) * T_CW.data[0,-1]
+        #     rotations_w = self.gaussians._rotation[idx:idx+num_valid]
+        #     rotations_kf = quat_mult(T_CW.data, rotations_w)
+        #     means_w = T_CW.act(self.gaussians._xyz[idx:idx+num_valid])
 
-            # print("scaling:", self.gaussians._scaling[idx:idx+num_valid])
-            # print("scales kf :", keyframes[frame_idx].scales)
-            keyframe.update_gaussians(
-                valid_mask=valid,
-                scale=scales_w,
-                rotation=rotations_kf,
-                SH=einops.rearrange(self.gaussians._features_dc[idx:idx+num_valid], "wh d c -> wh c d"),
-                opacity=self.gaussians._opacity[idx:idx+num_valid],
-                mean=means_w,
-            )
-            keyframes[frame_idx] = keyframe
-            idx += num_valid
+        #     # print("scaling:", self.gaussians._scaling[idx:idx+num_valid])
+        #     # print("scales kf :", keyframes[frame_idx].scales)
+        #     keyframe.update_gaussians(
+        #         valid_mask=valid,
+        #         scale=scales_w,
+        #         rotation=rotations_kf,
+        #         SH=einops.rearrange(self.gaussians._features_dc[idx:idx+num_valid], "wh d c -> wh c d"),
+        #         opacity=self.gaussians._opacity[idx:idx+num_valid],
+        #         mean=means_w,
+        #     )
+        #     keyframes[frame_idx] = keyframe
+        #     idx += num_valid
         print(f"num gaussians: {self.gaussians._xyz.shape[0]:,}"+f", idx: {idx}")
         print(f"updated gaussians of {num_keyframes} keyframes")
         if save_results:
@@ -505,6 +513,75 @@ class GaussianOptimizer:
         print(f"Pose update of frame {cur_frame_idx}: T: {viewpoint.R.T @ (T0 - viewpoint.T)}")
         # self.median_depth = get_median_depth(depth, opacity)
         return render_pkg
+
+
+    
+    def reduce_gaussians_with_voxels(
+        self,
+        positions: torch.Tensor,
+        scales: torch.Tensor,
+        rotations: torch.Tensor,
+        sh_coeffs: torch.Tensor,
+        opacities: torch.Tensor,
+        voxel_size: float
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Reduces the number of 3D Gaussians using a voxel grid.
+
+        Args:
+            positions: Tensor of shape (N, 3) representing Gaussian positions.
+            scales: Tensor of shape (N, 3) representing Gaussian scales.
+            rotations: Tensor of shape (N, 4) representing Gaussian rotations as quaternions.
+            sh_coeffs: Tensor of shape (N, C, D) representing Spherical Harmonics coefficients.
+            opacities: Tensor of shape (N, 1) representing Gaussian opacities.
+            voxel_size: The size of each voxel.
+
+        Returns:
+            A tuple containing the reduced positions, scales, rotations, sh_coeffs, and opacities.
+        """
+        # Get the device from the input tensors
+        device = positions.device
+
+        # Determine the scene bounds
+        min_bound = torch.min(positions, dim=0)[0]
+        max_bound = torch.max(positions, dim=0)[0]
+
+        # Assign each Gaussian to a voxel
+        voxel_indices = torch.floor((positions - min_bound) / voxel_size).long()
+
+        # Create a unique integer ID for each voxel index for efficient grouping
+        unique_voxel_ids, inverse_indices = torch.unique(voxel_indices, dim=0, return_inverse=True)
+        print(f"positions shape: {positions.shape}, unique_voxel_ids shape: {unique_voxel_ids.shape}, inverse_indices shape: {inverse_indices.shape}")
+        # Initialize tensors for the new, reduced Gaussians
+        num_reduced_gaussians = unique_voxel_ids.shape[0]
+        new_positions = torch.zeros((num_reduced_gaussians, 3), dtype=torch.float32, device=device)
+        new_scales = torch.zeros((num_reduced_gaussians, 3), dtype=torch.float32, device=device)
+        new_rotations = torch.zeros((num_reduced_gaussians, 4), dtype=torch.float32, device=device)
+        new_sh_coeffs = torch.zeros((num_reduced_gaussians, sh_coeffs.shape[1], sh_coeffs.shape[2]), dtype=torch.float32, device=device)
+        new_opacities = torch.zeros((num_reduced_gaussians, 1), dtype=torch.float32, device=device)
+
+        # Use scatter_add_ to sum properties for each unique voxel
+        new_positions.scatter_add_(0, inverse_indices.unsqueeze(1).expand(-1, 3), positions)
+        new_scales.scatter_add_(0, inverse_indices.unsqueeze(1).expand(-1, 3), scales)
+        new_rotations.scatter_add_(0, inverse_indices.unsqueeze(1).expand(-1, 4), rotations)
+        new_sh_coeffs.scatter_add_(0, inverse_indices.unsqueeze(1).unsqueeze(2).expand(-1, sh_coeffs.shape[1], sh_coeffs.shape[2]), sh_coeffs)
+        new_opacities.scatter_add_(0, inverse_indices.unsqueeze(1), opacities)
+
+        # Count the number of Gaussians in each voxel
+        voxel_counts = torch.zeros(num_reduced_gaussians, dtype=torch.long, device=device)
+        voxel_counts.scatter_add_(0, inverse_indices, torch.ones_like(inverse_indices, dtype=torch.long))
+
+        # Average the properties
+        new_positions /= voxel_counts.unsqueeze(1)
+        new_scales /= voxel_counts.unsqueeze(1)
+        new_rotations /= voxel_counts.unsqueeze(1)
+        # Normalize the averaged quaternions
+        new_rotations = torch.nn.functional.normalize(new_rotations, p=2, dim=1)
+        new_sh_coeffs /= voxel_counts.unsqueeze(1).unsqueeze(2)
+        new_opacities /= voxel_counts.unsqueeze(1)
+
+
+        return nn.Parameter(new_positions), nn.Parameter(new_scales), nn.Parameter(new_rotations), nn.Parameter(new_sh_coeffs), nn.Parameter(new_opacities)
 
     def mean_gaussians(self, gaussians_1, gaussians_2):
         (means_1, features_dc_1, opacities_1, scales_1, rotations_1) = gaussians_1

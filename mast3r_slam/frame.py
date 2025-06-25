@@ -500,7 +500,7 @@ class SharedKeyframes:
 
     def update_T_WCs(self, T_WCs, idx) -> None:
         with self.lock:
-            print(f"Updating T_WC for idx: {idx}")
+            # print(f"Updating T_WC for idx: {idx}")
             # print(f"self.TWC[idx]: {self.T_WC[idx]}")
             # print(f"T_WCs.data: {T_WCs.data}")
             # print(f"Position corrections: {T_WCs.data[:,0,:3] - self.T_WC[idx][:,0,:3]}")

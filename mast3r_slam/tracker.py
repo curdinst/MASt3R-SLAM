@@ -163,8 +163,8 @@ class FrameTracker:
             # gaussian_mask = torch.zeros_like(valid_kf, dtype=torch.bool)
             # gaussian_mask[torch.unique(idx_f2k[valid_match_k[:, 0]])] = True
             # frame.gaussian_mask = gaussian_mask.squeeze(-1)
-            if match_frac_k < unique_frac_f: print(f"match_frac_k < th")
-            else: print(f"unique_frac_f < th")
+            # if match_frac_k < unique_frac_f: print(f"match_frac_k < th")
+            # else: print(f"unique_frac_f < th")
             # torch.save(idx_f2k, f"/home/curdinst/repos/MASt3R-SLAM/logs/" + f"idx_f2k_{frame.frame_id}-2-{keyframe.frame_id}.pt")
             # torch.save(valid_match_k, f"/home/curdinst/repos/MASt3R-SLAM/logs/" + f"valid_match_k_{frame.frame_id}-2-{keyframe.frame_id}.pt")
             # torch.save(valid_kf, f"/home/curdinst/repos/MASt3R-SLAM/logs/" + f"valid_kf_{frame.frame_id}-2-{keyframe.frame_id}.pt")

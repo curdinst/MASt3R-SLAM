@@ -720,7 +720,6 @@ class GaussianModel:
         # self._opacity = torch.cat((self._opacity, new_opacities), dim=0)
         # self._scaling = torch.cat((self._scaling, new_scales), dim=0)
         # self._rotation = torch.cat((self._rotation, new_rotations), dim=0)
-        print()
 
         new_scales = torch.log(new_scales)
         # print(f"new_xyz: {new_xyz.shape}")
@@ -765,6 +764,8 @@ class GaussianModel:
                 , dim=0
             )
         )
+        # print(f"features dc shape: {self._features_dc.shape}")
+        # print(f"features rest shape: {self._features_rest.shape}")
         self._opacity = nn.Parameter(
             torch.cat(
                 (

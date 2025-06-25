@@ -1,6 +1,6 @@
 use_calib: False
-used_dataset: "datasets/tum/rgbd_dataset_freiburg1_desk"
-# used_dataset: "datasets/replica/office2"
+# used_dataset: "datasets/tum/rgbd_dataset_freiburg1_desk"
+used_dataset: "datasets/replica/office2"
 # used_dataset: "datasets/replica/office1"
 # used_dataset: "datasets/replica/office3"
 # used_dataset: "datasets/replica/room0"
@@ -15,11 +15,12 @@ gaussians:
   window_size: 10 # 2 newest frames are subtracted -> window_size = 2 newest frames + N random frames
   tracking_itr_num: 100
   c_conf_threshold: 1.5
-  use_matching_mask: False
   average_correspondances: True
   l1_mask: False
-  l1_threshold: 0.1
+  l1_threshold: 0.05
   # densify_at_it_nr: [10, 20]
+  voxel_reduction: True
+  voxel_size: 0.0075
   pre_pose_optimization: False
   post_pose_optimization: False
   seed: 0
