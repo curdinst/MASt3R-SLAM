@@ -42,8 +42,9 @@ from munch import munchify
 from torchvision.utils import save_image
 
 
-reduced = False
+reduced = True
 grad_threshold = 0.2
+depth_grad_threshold = 0.2
 scale_factor = 1.0
 save_ply = True
 
@@ -125,10 +126,15 @@ def spatial_derivative(img):
 
     return grad_x, grad_y
 
-def get_mask(img):
+def get_mask(img, depth_img):
     grad_x, grad_y = spatial_derivative(img)
     grad_x, grad_y = torch.abs(grad_x), torch.abs(grad_y)
     print(grad_x.shape, grad_y.shape)
+    depth_grad_x, depth_grad_y = spatial_derivative(depth_img.unsqueeze(0))
+    depth_grad_x, depth_grad_y = torch.abs(depth_grad_x), torch.abs(depth_grad_y)
+    print(f"depth_grad_x shape: {depth_grad_x.shape}, depth_grad_y shape: {depth_grad_y.shape}")
+    print(f"max depth_grad_x: {depth_grad_x.max()}, min depth_grad_x: {depth_grad_x.min()}")
+    print(f"max depth_grad_y: {depth_grad_y.max()}, min depth_grad_y: {depth_grad_y.min()}")
 
     print("Gradient x max:", grad_x.max(), "min:", grad_x.min())
     print("Gradient y max:", grad_y.max(), "min:", grad_y.min())
@@ -138,7 +144,11 @@ def get_mask(img):
 
     mask_x = grad_x_max < grad_threshold
     mask_y = grad_y_max < grad_threshold
-    mask = mask_x & mask_y
+    depth_mask_x = depth_grad_x.squeeze(0) < depth_grad_threshold
+    depth_mask_y = depth_grad_y.squeeze(0) < depth_grad_threshold
+    print(f"mask_x shape: {mask_x.shape}, mask_y shape: {mask_y.shape}")
+    print(f"depth_mask_x shape: {depth_mask_x.shape}, depth_mask_y shape: {depth_mask_y.shape}")
+    mask = mask_x & mask_y & depth_mask_x & depth_mask_y
     print("Mask shape:", mask.shape)
     print(f"mask.sum(): {mask.sum()}, mask.numel(): {mask.numel()}, mask.sum()/mask.numel(): {mask.sum()/mask.numel()}")
 
@@ -259,7 +269,18 @@ covariances = einops.rearrange(covariances, "(h w) x y -> h w x y", h=H, w=W)
 scales = einops.rearrange(Sii, "(h w) c -> c h w", h=H, w=W)
 rotations = einops.rearrange(Rii, "(h w) c -> c h w", h=H, w=W)
 
-mask_downsampled, mask_upsampled = get_mask(image1)
+depths = Mii.norm(dim=1)
+depth_img = einops.rearrange(depths, "(h w) -> h w", h=H, w=W)
+print(f"depth_img shape: {depth_img.shape}, min: {depth_img.min()}, max: {depth_img.max()}")
+# Save depth image as a PNG file
+depth_img_normalized = (depth_img - depth_img.min()) / (depth_img.max() - depth_img.min())
+plt.figure()
+plt.imshow(depth_img_normalized.cpu().detach().numpy(), cmap="viridis")
+plt.colorbar()
+plt.title("Depth Image")
+plt.savefig("logs/depth_image.png")
+plt.close()
+mask_downsampled, mask_upsampled = get_mask(image1, depth_img)
 print("Mask shape:", mask_downsampled.shape)
 print(mask_downsampled)
 
@@ -274,27 +295,56 @@ v = indices[:, 1] * 2
 print(f"u shape: {u.shape}, v shape: {v.shape}")
 # print(f"max u {u.max()}, max v {v.max()}")
 
-mean1, mean2, mean3, mean4 = means[:, u, v], means[:, u, v+1], means[:, u+1, v], means[:, u+1, v+1]
-# Fit a plane over the four mean points
-# The plane equation is ax + by + cz + d = 0
-# We solve for [a, b, c, d] using the four points
-# Stack the four mean points into a matrix
-# points = torch.stack((mean1, mean2, mean3, mean4), dim=1)  # Shape: (3, 4)
-# # Add a row of ones for the homogeneous coordinates
-# points_h = torch.cat((points, torch.ones(1, 4, device=device)), dim=0)  # Shape: (4, 4)
-# # Perform SVD to find the null space of the matrix
-# _, _, V = torch.linalg.svd(points_h.T)
-# plane_coeffs = V[-1]  # The last row of V corresponds to the null space
-# # Normalize the plane coefficients
-# plane_coeffs /= torch.norm(plane_coeffs[:3])
-# # Extract the plane parameters
-# a, b, c, d = plane_coeffs
-
-# print(f"Plane equation: {a:.4f}x + {b:.4f}y + {c:.4f}z + {d:.4f} = 0")
 fused_means = (means[:, u, v] + means[:, u, v+1] + means[:, u+1, v] + means[:, u+1, v+1]) / 4.0
+mean_offset1 = means[:, u, v] - fused_means
+mean_offset2 = means[:, u, v+1] - fused_means
+mean_offset3 = means[:, u+1, v] - fused_means
+mean_offset4 = means[:, u+1, v+1] - fused_means
+
+mean_offsets = torch.mean(torch.stack((mean_offset1, mean_offset2, mean_offset3, mean_offset4), dim=0), dim=0)
+print(f"mean_offsets shape: {mean_offsets.shape}")
+# offset_threshold = 0.05
+# too_large_offset = (mean_offset1.norm(dim=0) > offset_threshold) | (mean_offset2.norm(dim=0) > offset_threshold) | (mean_offset3.norm(dim=0) > offset_threshold) | (mean_offset4.norm(dim=0) > offset_threshold)
+# print(f"too_large_offset shape: {too_large_offset.shape}, sum: {too_large_offset.sum()}")
+# valid_offset = ~too_large_offset
+# print(f"mask_upsampled.shape: {mask_upsampled.shape}, valid_offset shape: {valid_offset.shape}, valid_offset sum: {valid_offset.sum()}")
+# mask_upsampled[u[too_large_offset], v[too_large_offset]] = False
+# mask_upsampled[u[too_large_offset]+1, v[too_large_offset]] = False
+# mask_upsampled[u[too_large_offset], v[too_large_offset]+1] = False
+# mask_upsampled[u[too_large_offset]+1, v[too_large_offset]+1] = False
+
+# mean_offset1 = mean_offset1[:, valid_offset]
+# mean_offset2 = mean_offset2[:, valid_offset]
+# mean_offset3 = mean_offset3[:, valid_offset]
+# mean_offset4 = mean_offset4[:, valid_offset]
+# u = u[valid_offset]
+# v = v[valid_offset]
+fused_means = (means[:, u, v] + means[:, u, v+1] + means[:, u+1, v] + means[:, u+1, v+1]) / 4.0
+
+print(f"mean_offset1 shape: {mean_offset1.shape}")
+print(f"mean_offset1 max: {mean_offset1.max()}, min: {mean_offset1.min()}, mean: {mean_offset1.mean(axis=1)}") 
+print(F"mean_offset2 max: {mean_offset2.max()}, min: {mean_offset2.min()}, mean: {mean_offset2.mean(axis=1)}") 
+print(f"mean_offset3 max: {mean_offset3.max()}, min: {mean_offset3.min()}, mean: {mean_offset3.mean(axis=1)}") 
+print(f"mean_offset4 max: {mean_offset4.max()}, min: {mean_offset4.min()}, mean: {mean_offset4.mean(axis=1)}")
+
+matrix1 = torch.einsum('ji,ki->ijk', mean_offset1, mean_offset1)
+matrix2 = torch.einsum('ji,ki->ijk', mean_offset2, mean_offset2)
+matrix3 = torch.einsum('ji,ki->ijk', mean_offset3, mean_offset3)
+matrix4 = torch.einsum('ji,ki->ijk', mean_offset4, mean_offset4)
+mean_matrix = torch.mean(torch.stack((matrix1, matrix2, matrix3, matrix4), dim=0), dim=0)
+print(f"meanoffset1: {mean_offset1[:, 0]}")
+print(f"matrix1: {matrix1[0, ...]}")
+print(f"matrix1 shape: {matrix1.shape}")
+print(f"mean_offset1 mean {mean_offset1.mean(axis=1)}, max {mean_offset1.max()}, min {mean_offset1.min()}")
+fused_covariances = (0.25 * covariances[u, v, ...] + matrix1
+                    + 0.25 * covariances[u, v+1, ...] + matrix2
+                    + 0.25 * covariances[u+1, v, ...] + matrix3
+                    + 0.25 * covariances[u+1, v+1, ...] + matrix4)
+# fused_covariances = (0.25 * covariances[u, v, ...]
+#                     + 0.25 * covariances[u, v+1, ...]
+#                     + 0.25 * covariances[u+1, v, ...]
+#                     + 0.25 * covariances[u+1, v+1, ...]) + mean_matrix*4
 fused_opacities = (opacities[:, u, v] + opacities[:, u, v+1] + opacities[:, u+1, v] + opacities[:, u+1, v+1]) / 4.0
-fused_covariances = (covariances[u, v, ...] + covariances[u, v+1, ...] + covariances[u+1, v, ...] + covariances[u+1, v+1, ...]) * scale_factor
-print(fused_covariances)
 fused_sh = (spherical_harmonics[:, u, v] + spherical_harmonics[:, u, v+1] + spherical_harmonics[:, u+1, v] + spherical_harmonics[:, u+1, v+1]) / 4.0
 fused_scales = (scales[:, u, v] + scales[:, u, v+1] + scales[:, u+1, v] + scales[:, u+1, v+1]) * scale_factor
 quat1, quat2, quat3, quat4 = rotations[:, u, v], rotations[:, u, v+1], rotations[:, u+1, v], rotations[:, u+1, v+1]
@@ -357,6 +407,7 @@ print(f"reduced_sh shape: {reduced_sh.shape}")
 print(f"reduced_covariances shape: {reduced_covariances.shape}")
 reduced_rotations, reduced_scales = covariance_to_quaternion_and_scale(reduced_covariances)
 
+print(f"reduced_scales mean: {reduced_scales.mean()}, reduced_scales max: {reduced_scales.max()}, reduced_scales min: {reduced_scales.min()}")
 # cov_test = geometry.build_covariance(Sii, Rii)
 # Rii, Sii = covariance_to_quaternion_and_scale(cov_test)
 
