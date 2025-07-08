@@ -43,8 +43,8 @@ from torchvision.utils import save_image
 
 
 reduced = True
-grad_threshold = 0.2
-depth_grad_threshold = 0.2
+grad_threshold = 100.0
+depth_grad_threshold = 0.5
 scale_factor = 1.0
 save_ply = True
 
@@ -416,7 +416,7 @@ if not reduced:
     num_gaussians = Sii.shape[0]
 
 input_imgs = f"_frame_{img1_idx}_{img2_idx}"
-reduced_name = f"gaussians_reduced_th_{grad_threshold}_covf_{scale_factor}_n_{num_gaussians}" if reduced else f"gaussians_original_n_{num_gaussians_original}"
+reduced_name = f"gaussians_reduced_th_{grad_threshold}_dth_{depth_grad_threshold}_covf_{scale_factor}_n_{num_gaussians}" if reduced else f"gaussians_original_n_{num_gaussians_original}"
 reduced_name += input_imgs
 results_path = pathlib.Path(f"/home/curdinst/repos/MASt3R-SLAM/logs/{reduced_name}/")
 results_path.mkdir(exist_ok=True, parents=True)
