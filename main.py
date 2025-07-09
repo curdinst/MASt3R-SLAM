@@ -92,7 +92,7 @@ def run_gaussian_optimization(cfg, dataset, model, states: SharedStates, keyfram
             continue
         len_frames = len(keyframes)
         # print("new frame", new_frame)
-        if len_frames == len_frames_before or len_frames < 1:
+        if len_frames == len_frames_before or len_frames < 2: # Firs keyframe is from Mono inference
             time.sleep(0.01)
             continue
         print("len frames", len_frames)
@@ -100,7 +100,7 @@ def run_gaussian_optimization(cfg, dataset, model, states: SharedStates, keyfram
 
         num_iterations = config["gaussians"]["num_iterations"]
         states.set_gauss_opt_frameid(len_frames - 2)
-        gaussian_optimizer.optimize(keyframes=keyframes, iters=num_iterations)
+        gaussian_optimizer.optimize(keyframes=keyframes, iters=num_iterations, path=savedir)
         states.set_gauss_opt_frameid(len_frames - 1)
 
     gaussian_optimizer.save_results(savedir, keyframes)
@@ -200,13 +200,20 @@ if __name__ == "__main__":
     
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
     dataset_name = config["used_dataset"].split("/")[1] + "_" + config["used_dataset"].split("/")[-1]
-    folder_name = timestamp + f"_{dataset_name}_{config['gaussians']['num_iterations']}_it_window{config['gaussians']['window_size']}"
+    calib = "calib" if config["use_calib"] else "no_calib"
+    avg = "avg" if config["gaussians"]["average_correspondances"] else "no_avg"
+    l1_mask = "l1_mask" if config["gaussians"]["l1_mask"] else "no_l1_mask"
+    if config["gaussians"]["num_iterations"] > 0:
+        folder_name = timestamp + f"_{dataset_name}_{dataset_name}_{calib}_{avg}_{l1_mask}_{config['gaussians']['num_iterations']}_it_w{config['gaussians']['window_size']}"
+    else:
+        folder_name = timestamp + f"_{dataset_name}_{calib}_{avg}_{l1_mask}"
     path = pathlib.Path(f"logs/")
     save_dir = path / folder_name
     os.makedirs(save_dir, exist_ok=True)
     print(f"Saving to {save_dir}")
+    # config["tracking"]["save_dir"] = str(save_dir)
     shutil.copyfile("/home/curdinst/repos/MASt3R-SLAM/config/base.yaml", os.path.join(save_dir, "base.yaml"))
-    shutil.copyfile("/home/curdinst/repos/MASt3R-SLAM/config/calib.yaml", os.path.join(save_dir, "calib.yaml"))
+    # shutil.copyfile("/home/curdinst/repos/MASt3R-SLAM/config/calib.yaml", os.path.join(save_dir, "calib.yaml"))
 
     manager = mp.Manager()
     main2viz = new_queue(manager, args.no_viz)
@@ -315,7 +322,7 @@ if __name__ == "__main__":
             if i == 0
             else states.get_frame().T_WC
         )
-        frame = create_frame(i, img, T_WC, img_size=dataset.img_size, device=device)
+        frame = create_frame(i, img, T_WC, img_size=dataset.img_size, device=device, K=K)
 
         if mode == Mode.INIT:
             # Initialize via mono inference, and encoded features neeed for database
@@ -352,8 +359,13 @@ if __name__ == "__main__":
         if add_new_kf:
             if config["run_gaussian_optimizer"]:
                 print(f"Adding new keyframe {i}, gauss_opt_frameid: {states.get_gauss_opt_frameid()}, len(keyframes): {len(keyframes)}")
+                start_waiting = time.time()
                 while states.get_gauss_opt_frameid() < len(keyframes) - 2:
                     time.sleep(0.05)
+                waiting_time = time.time() - start_waiting
+                if waiting_time > 0.1:
+                    print(f"Waiting for gaussian optimizer to finish, waiting time: {waiting_time:.2f}s")
+                
             keyframes.append(frame)
             # print("add new keyframe", frame.frame_id)
             # print("new keyframe has sh: ", frame.SH is not None)
@@ -373,11 +385,20 @@ if __name__ == "__main__":
             print(f"FPS: {FPS}")
         i += 1
         # if i == config["stop_at_frame"]:
-        if len(keyframes) > config["stop_at_keyframe"] or i > config["stop_at_frame"]:
+        if len(keyframes) > config["stop_at_keyframe"] or i > config["stop_at_frame"]//config["dataset"]["subsample"]:
             print(f"Last timestamp: {timestamp}, frame: {i}, len(keyframes): {len(keyframes)}")
             states.set_mode(Mode.TERMINATED)
             break
 
+    # Save FPS, duration, and number of iterations to a text file
+    time_now = time.time()
+    FPS = i / (time_now - fps_timer)
+    duration = time_now - fps_timer
+
+    with open(save_dir / f"performance_{FPS:.2f}_FPS.txt", "w") as f:
+        f.write("FPS: {:.2f}\n".format(FPS))
+        f.write("Duration: {:.2f} seconds\n".format(duration))
+        f.write("Number of Iterations: {}\n".format(i))
     date = datetime_now.split(":")[0]
     min = datetime_now.split(":")[1]
     sec = datetime_now.split(":")[-1].split(".")[0]
@@ -405,13 +426,13 @@ if __name__ == "__main__":
             dataset.timestamps,
             tracker.poses,
         )
-    save_gaussian_map = True
+    save_gaussian_map = not config["run_gaussian_optimizer"]
     if save_gaussian_map:
-        save_dir, seq_name = eval.prepare_savedir(args, dataset)
-        # folder_name = timestamp + f"_{config['gaussians']['num_iterations']}_it"
-        file_name = seq_name + datetime_now_new + "_wa.ply"
+        gaussian_opt = GaussianOptimizer(config, dataset, device)
+        gaussian_opt.save_results(save_dir, keyframes)
+        # file_name = "gaussians_eval.ply"
         # eval.save_gaussian_map(
-        #     savedir=savedir,
+        #     savedir=save_dir,
         #     filename=file_name,
         #     keyframes=keyframes,
         #     c_conf_threshold=last_msg.C_conf_threshold,

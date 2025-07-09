@@ -87,10 +87,10 @@ class TUMDataset(MonocularDataset):
             calib = np.array([535.4, 539.2, 320.1, 247.6])
         W, H = 640, 480
         self.camera_intrinsics = Intrinsics.from_calib(self.img_size, W, H, calib)
-        print(f"self.camera_intrinsics.K_frame: {self.camera_intrinsics.K_frame}")
-        print(f"self.camera_intrinsics.K: {self.camera_intrinsics.K}")
-        print(f"self.camera_intrinsics.K_orig: {self.camera_intrinsics.K_orig}")
-        print(f"self.camera_intrinsics.distortion: {self.camera_intrinsics.distortion}")
+        # print(f"self.camera_intrinsics.K_frame: {self.camera_intrinsics.K_frame}")
+        # print(f"self.camera_intrinsics.K: {self.camera_intrinsics.K}")
+        # print(f"self.camera_intrinsics.K_orig: {self.camera_intrinsics.K_orig}")
+        # print(f"self.camera_intrinsics.distortion: {self.camera_intrinsics.distortion}")
 
 class ReplicaDataset(MonocularDataset):
     def __init__(self, dataset_path):

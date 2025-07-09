@@ -60,6 +60,7 @@ class FrameTracker:
         Qk = torch.sqrt(Qff[idx_f2k] * Qkf)
         (Sff, Rff, SHff, Off, Mff, Skf, Rkf, SHkf, Okf, Mkf) = gaussian_params
 
+
         # Update keyframe pointmap after registration (need pose)
         frame.update_pointmap(Xff, Cff, Sff, Rff, SHff, Off, Mff)
 
@@ -77,6 +78,11 @@ class FrameTracker:
         Xf, Xk, T_WCf, T_WCk, Cf, Ck, meas_k, valid_meas_k = self.get_points_poses(
             frame, keyframe, idx_f2k, img_size, use_calib, K
         )
+        # print(f"idx_f2d shape {idx_f2k.shape}")
+        # print(f"idx_f2d {idx_f2k.min()} {idx_f2k.max()}")
+        # print(f"valid_match_k {valid_match_k.shape} {valid_match_k.sum()}")
+        # print(f"valid_match_k {valid_match_k.min()} {valid_match_k.max()}")
+
         # print("Xf.shape", Xf.shape)
         # Get valid
         # Use canonical confidence average
@@ -141,6 +147,8 @@ class FrameTracker:
         # print("added gaussian to keyframe", frame.frame_id)
         # print(keyframe.SH is None)
         # write back the fitered pointmap
+
+        # keyframe.update_gaussian_mask(valid_kf.squeeze(-1).clone(), idx_f2k=idx_f2k, is_tracking=True, corresponding_kf_idx=None)
         self.keyframes[len(self.keyframes) - 1] = keyframe
 
         # Keyframe selection
@@ -151,9 +159,17 @@ class FrameTracker:
         )
 
         new_kf = min(match_frac_k, unique_frac_f) < self.cfg["match_frac_thresh"]
-
+        
         # Rest idx if new keyframe
         if new_kf:
+            # gaussian_mask = torch.zeros_like(valid_kf, dtype=torch.bool)
+            # gaussian_mask[torch.unique(idx_f2k[valid_match_k[:, 0]])] = True
+            # frame.gaussian_mask = gaussian_mask.squeeze(-1)
+            if match_frac_k < unique_frac_f: print(f"match_frac_k < th")
+            else: print(f"unique_frac_f < th")
+            # torch.save(idx_f2k, f"/home/curdinst/repos/MASt3R-SLAM/logs/" + f"idx_f2k_{frame.frame_id}-2-{keyframe.frame_id}.pt")
+            # torch.save(valid_match_k, f"/home/curdinst/repos/MASt3R-SLAM/logs/" + f"valid_match_k_{frame.frame_id}-2-{keyframe.frame_id}.pt")
+            # torch.save(valid_kf, f"/home/curdinst/repos/MASt3R-SLAM/logs/" + f"valid_kf_{frame.frame_id}-2-{keyframe.frame_id}.pt")
             self.reset_idx_f2k()
         # print("Tracking end, new_kf", new_kf)
         # print(f"frame_id {frame.frame_id}, T_WCf {frame.T_WC.data}")
