@@ -1,6 +1,6 @@
 use_calib: False
-used_dataset: "datasets/tum/rgbd_dataset_freiburg1_desk"
-# used_dataset: "datasets/replica/office2"
+# used_dataset: "datasets/tum/rgbd_dataset_freiburg1_desk"
+used_dataset: "datasets/replica/office2"
 # used_dataset: "datasets/replica/office1"
 # used_dataset: "datasets/replica/office3"
 # used_dataset: "datasets/replica/room0"
@@ -17,6 +17,7 @@ gaussians:
   c_conf_threshold: 1.5
   use_matching_mask: False
   average_correspondances: True
+  fuse_min_Kl_div: False
   l1_mask: False
   l1_threshold: 0.1
   # densify_at_it_nr: [10, 20]

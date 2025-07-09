@@ -25,6 +25,7 @@ from gaussian_splatting.utils.graphics_utils import focal2fov
 from gaussian_splatting.utils.pose_utils import update_pose
 from gaussian_splatting.utils.slam_utils import get_loss_tracking_rgb, get_loss_tracking_rgbd, get_loss_mapping_rgbd
 from gaussian_splatting.utils.general_utils import slerp
+import mast3r_slam.utils.geometry as geometry
 
 from matplotlib import pyplot as plt
 import pickle
@@ -514,15 +515,26 @@ class GaussianOptimizer:
         print(f"mean diffs: {mean_dists}, max: {torch.max(dists)}, min: {torch.min(dists)}")
         inlier_mask = dists < mean_dists
         print(f"inlier_mask shape {inlier_mask.shape}, inlier_mask sum {inlier_mask.sum()}")
-        # inlier_mask = ~outliers_mask
-        
-        means_1[inlier_mask] = (means_1[inlier_mask] + means_2[inlier_mask]) / 2.0
         features_dc_1[inlier_mask] = (features_dc_1[inlier_mask] + features_dc_2[inlier_mask]) / 2.0
         opacities_1[inlier_mask] = (opacities_1[inlier_mask] + opacities_2[inlier_mask]) / 2.0
-        # scales_1[inlier_mask] = torch.sqrt((scales_1[inlier_mask]**2 + scales_2[inlier_mask]**2))
-        scales_1[inlier_mask] = (scales_1[inlier_mask] + scales_2[inlier_mask]) / 2.0
-        rotations_1[inlier_mask] = slerp(rotations_1[inlier_mask], rotations_2[inlier_mask], 0.5)
-
+        if self.config["gaussians"]["fuse_min_Kl_div"]:
+            means1, means2 = means_1[inlier_mask], means_2[inlier_mask]
+            means_avg = (means_1[inlier_mask] + means_2[inlier_mask]) / 2.0
+            scales1, scales2 = scales_1[inlier_mask], scales_2[inlier_mask]
+            rotations1, rotations2 = rotations_1[inlier_mask], rotations_2[inlier_mask]
+            cov1, cov2 = geometry.build_covariance(scales1, rotations1), geometry.build_covariance(scales2, rotations2)
+            mean_offset1, mean_offset2 = means_avg-means1, means_avg-means2
+            print(f"mean_offset1 {mean_offset1.shape}, mean_offset2 {mean_offset2.shape}")
+            matrix1 = torch.einsum('ij,ik->ijk', mean_offset1, mean_offset1)
+            matrix2 = torch.einsum('ij,ik->ijk', mean_offset2, mean_offset2)
+            fused_covariances = (cov1 + matrix1 + cov2 + matrix2) / 2.0
+            rotations_1[inlier_mask], scales_1[inlier_mask] = geometry.covariance_to_quaternion_and_scale(fused_covariances)
+            means_1[inlier_mask] = means_avg
+        else:
+            # scales_1[inlier_mask] = torch.sqrt((scales_1[inlier_mask]**2 + scales_2[inlier_mask]**2))
+            means_1[inlier_mask] = (means_1[inlier_mask] + means_2[inlier_mask]) / 2.0
+            scales_1[inlier_mask] = (scales_1[inlier_mask] + scales_2[inlier_mask]) / 2.0
+            rotations_1[inlier_mask] = slerp(rotations_1[inlier_mask], rotations_2[inlier_mask], 0.5)
         # take_1 = ~inlier_mask & valid_mask_1 
         # means_1[take_1] = means_1[take_1]
         # features_dc_1[take_1] = features_dc_1[take_1]
