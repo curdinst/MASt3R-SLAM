@@ -92,7 +92,7 @@ def run_gaussian_optimization(cfg, dataset, model, states: SharedStates, keyfram
             continue
         len_frames = len(keyframes)
         # print("new frame", new_frame)
-        if len_frames == len_frames_before or len_frames < 2: # Firs keyframe is from Mono inference
+        if len_frames == len_frames_before or len_frames < 2: # First keyframe is from Mono inference
             time.sleep(0.01)
             continue
         print("len frames", len_frames)
@@ -204,7 +204,7 @@ if __name__ == "__main__":
     avg = "avg" if config["gaussians"]["average_correspondances"] else "no_avg"
     l1_mask = "l1_mask" if config["gaussians"]["l1_mask"] else "no_l1_mask"
     if config["gaussians"]["num_iterations"] > 0:
-        folder_name = timestamp + f"_{dataset_name}_{dataset_name}_{calib}_{avg}_{l1_mask}_{config['gaussians']['num_iterations']}_it_w{config['gaussians']['window_size']}"
+        folder_name = timestamp + f"_{dataset_name}_{calib}_{avg}_{l1_mask}_{config['gaussians']['num_iterations']}_it_w{config['gaussians']['window_size']}"
     else:
         folder_name = timestamp + f"_{dataset_name}_{calib}_{avg}_{l1_mask}"
     path = pathlib.Path(f"logs/")

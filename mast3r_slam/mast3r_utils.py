@@ -187,9 +187,9 @@ def mast3r_match_symmetric(model, feat_i, pos_i, feat_j, pos_j, shape_i, shape_j
 
 @torch.inference_mode
 def mast3r_asymmetric_inference(model, frame_i, frame_j):
-    print("frame_i.img.shape", frame_i.img.shape)
+    # print("frame_i.img.shape", frame_i.img.shape)
     # print("frame_j.img.shape", frame_j.img.shape)
-    print(f"frame_i.img_true_shape", frame_i.img_true_shape)
+    # print(f"frame_i.img_true_shape", frame_i.img_true_shape)
     if frame_i.feat is None:
         frame_i.feat, frame_i.pos, _ = model._encode_image(
             frame_i.img, frame_i.img_true_shape
@@ -205,10 +205,10 @@ def mast3r_asymmetric_inference(model, frame_i, frame_j):
     #     (frame_i.img_true_shape, frame_j.img_true_shape), (frame_i.feat, frame_j.feat), (frame_i.pos, frame_j.pos) = model._encode_symmetrized(frame_i.img, frame_j_img_reshaped, frame_i.img_true_shape, frame_j.img_true_shape)
 
     feat1, feat2 = frame_i.feat, frame_j.feat
-    print(f"feat1 shape: {feat1.shape}, feat2 shape: {feat2.shape}")
+    # print(f"feat1 shape: {feat1.shape}, feat2 shape: {feat2.shape}")
     pos1, pos2 = frame_i.pos, frame_j.pos
-    print(f"pos1 shape: {pos1.shape}, pos2 shape: {pos2.shape}")
-    print(pos1)
+    # print(f"pos1 shape: {pos1.shape}, pos2 shape: {pos2.shape}")
+    # print(pos1)
     shape1, shape2 = frame_i.img_true_shape, frame_j.img_true_shape
 
     res11, res21 = decoder(model, feat1, feat2, pos1, pos2, shape1, shape2)
@@ -276,11 +276,11 @@ def _resize_pil_image(img, long_edge_size):
 
 def resize_img(img, size, square_ok=False, return_transformation=False):
     assert size == 224 or size == 512 or size == 256
-    print(f"image np shape: {img.shape}")
+    # print(f"image np shape: {img.shape}")
     # numpy to PIL format
     img = PIL.Image.fromarray(np.uint8(img * 255))
     W1, H1 = img.size
-    print(f"W1: {W1}, H1: {H1}, size: {size}, square_ok: {square_ok}")
+    # print(f"W1: {W1}, H1: {H1}, size: {size}, square_ok: {square_ok}")
     if size == 224:
         # resize short side to 224 (then crop)
         img = _resize_pil_image(img, round(size * max(W1 / H1, H1 / W1)))
@@ -291,7 +291,7 @@ def resize_img(img, size, square_ok=False, return_transformation=False):
         # resize long side to 512
         img = _resize_pil_image(img, size)
     W, H = img.size
-    print(f"W: {W}, H: {H}, size: {size}, square_ok: {square_ok}")
+    # print(f"W: {W}, H: {H}, size: {size}, square_ok: {square_ok}")
     cx, cy = W // 2, H // 2
     if size == 224:
         half = min(cx, cy)
@@ -301,7 +301,7 @@ def resize_img(img, size, square_ok=False, return_transformation=False):
         if not (square_ok) and W == H:
             halfh = 3 * halfw / 4
         img = img.crop((cx - halfw, cy - halfh, cx + halfw, cy + halfh))
-        print(f"cx: {cx}, cy: {cy}, halfw: {halfw}, halfh: {halfh}, W: {W}, H: {H}")
+        # print(f"cx: {cx}, cy: {cy}, halfw: {halfw}, halfh: {halfh}, W: {W}, H: {H}")
     else:
         halfw, halfh = ((2 * cx) // 16) * 8, ((2 * cy) // 16) * 8
         if not (square_ok) and W == H:

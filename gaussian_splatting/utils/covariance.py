@@ -10,7 +10,7 @@ def covariance_to_quaternion_and_scale(covariance, device='cpu'):
         S, U = torch.linalg.eig(covariance)
         S = S.real
         U = U.real
-        print(f"S: \n{S}, U: \n{U}")
+        # print(f"S: \n{S}, U: \n{U}")
         # Take the real part of S and U
         rotation = U
         identity_check = torch.allclose(
@@ -23,7 +23,7 @@ def covariance_to_quaternion_and_scale(covariance, device='cpu'):
             torch.ones(rotation.shape[:-2], device=rotation.device, dtype=rotation.dtype),
             atol=1e-6
         )
-        print(f"The rotation matrix is not orthonormal, identity_check: {identity_check}, determinant_check: {determinant_check}, det: {torch.linalg.det(rotation)}.")
+        # print(f"The rotation matrix is not orthonormal, identity_check: {identity_check}, determinant_check: {determinant_check}, det: {torch.linalg.det(rotation)}.")
         # if not (identity_check and determinant_check):
         #     raise ValueError(f"The rotation matrix is not orthonormal, identity_check: {identity_check}, determinant_check: {determinant_check}, det: {torch.linalg.det(rotation)}.")
         # else:

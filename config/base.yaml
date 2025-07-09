@@ -10,7 +10,7 @@ stop_at_keyframe: 30
 run_backend: True
 run_gaussian_optimizer: False
 gaussians:
-  init_lr: 1.0 #0.05 #6.0
+  init_lr: 3.0 #0.05 #6.0
   num_iterations: 0
   window_size: 10 # 2 newest frames are subtracted -> window_size = 2 newest frames + N random frames
   tracking_itr_num: 100
@@ -24,6 +24,10 @@ gaussians:
   pre_pose_optimization: False
   post_pose_optimization: False
   seed: 0
+  fuse_gaussians: True
+  gaussian_fusion_params:
+    rgb_threshold: 0.6
+    depth_threshold: 0.5
   pipeline_params:
     convert_SHs_python: False
     compute_cov3D_python: False
@@ -73,7 +77,7 @@ gaussians:
 single_thread: False
 
 dataset:
-  subsample: 2
+  subsample: 4
   img_downsample: 1
   center_principle_point: True
 
