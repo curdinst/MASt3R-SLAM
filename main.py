@@ -222,8 +222,10 @@ if __name__ == "__main__":
     dataset = load_dataset(config["used_dataset"])
     dataset.subsample(config["dataset"]["subsample"])
     h, w = dataset.get_img_shape()[0]
+    h, w = h // 2, w // 2
     print("img shape", h, w)
     print("len dataset", len(dataset.rgb_files))
+    dataset.img_size //= 2
     if args.calib:
         with open(args.calib, "r") as f:
             intrinsics = yaml.load(f, Loader=yaml.SafeLoader)
@@ -231,9 +233,9 @@ if __name__ == "__main__":
         dataset.use_calibration = True
         dataset.camera_intrinsics = Intrinsics.from_calib(
             dataset.img_size,
-            intrinsics["width"],
-            intrinsics["height"],
-            intrinsics["calibration"],
+            intrinsics["width"]//2,
+            intrinsics["height"]//2,
+            intrinsics["calibration"]/2,
         )
     # assert False, "check camera intrinsics"
 
@@ -250,7 +252,7 @@ if __name__ == "__main__":
     model = load_mast3r(device=device, path="checkpoints/MASt3R_gaussians_v1.pth")
     # model = load_mast3r(device=device)
     model.share_memory()
-    
+
     print("loaded model")
 
     has_calib = dataset.has_calib()
@@ -278,7 +280,7 @@ if __name__ == "__main__":
 
     tracker = FrameTracker(model, keyframes, device)
     last_msg = WindowMsg()
-    
+
     # torch.cuda.set_per_process_memory_fraction(0.33, device=device)
     if config["run_backend"]:
         backend = mp.Process(target=run_backend, args=(config, model, states, keyframes, K))

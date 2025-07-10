@@ -122,6 +122,13 @@ def mast3r_decode_symmetric_batch(
 
 @torch.inference_mode
 def mast3r_inference_mono(model, frame):
+    print(f"frame.img.shape: {frame.img.shape}, frame.true_shape: {frame.img_true_shape}")
+
+    # downsampled_image = torch.nn.functional.interpolate(
+    #     frame.img.unsqueeze(0), scale_factor=0.5, mode="bilinear", align_corners=False
+    # ).squeeze(0)
+    # new_image_shape = frame.img_true_shape // 2
+
     if frame.feat is None:
         frame.feat, frame.pos, _ = model._encode_image(frame.img, frame.img_true_shape)
 
@@ -190,6 +197,16 @@ def mast3r_asymmetric_inference(model, frame_i, frame_j):
     # print("frame_i.img.shape", frame_i.img.shape)
     # print("frame_j.img.shape", frame_j.img.shape)
     # print(f"frame_i.img_true_shape", frame_i.img_true_shape)
+
+    # downsampled_image_i = torch.nn.functional.interpolate(
+    #     frame_i.img.unsqueeze(0), scale_factor=0.5, mode="bilinear", align_corners=False
+    # ).squeeze(0)
+    # new_image_shape_i = frame_i.img_true_shape // 2
+    # downsampled_image_j = torch.nn.functional.interpolate(
+    #     frame_j.img.unsqueeze(0), scale_factor=0.5, mode="bilinear", align_corners=False
+    # ).squeeze(0)
+    # new_image_shape_j = frame_j.img_true_shape // 2
+    
     if frame_i.feat is None:
         frame_i.feat, frame_i.pos, _ = model._encode_image(
             frame_i.img, frame_i.img_true_shape
