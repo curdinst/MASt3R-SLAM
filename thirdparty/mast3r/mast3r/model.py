@@ -34,7 +34,7 @@ def load_model(model_path, device, verbose=True):
     args = args.replace("catmlp+dpt", "gaussian_head")
     args = args.replace("pts3d+desc24", "pts3d+gaussian+desc24")
     # args = args.replace("PatchEmbedDust3R", "ManyAR_PatchEmbed")
-    args = args[:-1] + ', use_offsets=False, sh_degree=1)'    
+    args = args[:-1] + ', use_offsets=True, sh_degree=1)'    
     print("args", args)
     if verbose:
         print(f"instantiating : {args}")
@@ -71,7 +71,7 @@ class AsymmetricMASt3R(AsymmetricCroCo3DStereo):
         if self.desc_conf_mode is None:
             self.desc_conf_mode = conf_mode
         # allocate heads
-        print("allocating heads: ", head_type)
+        print("allocating heads: ", head_type, "use_offsets:", self.use_offsets, "sh_degree:", self.sh_degree)
         self.downstream_head1 = mast3r_head_factory(head_type, output_mode, self, has_conf=bool(conf_mode), use_offsets=self.use_offsets, sh_degree=self.sh_degree)
         self.downstream_head2 = mast3r_head_factory(head_type, output_mode, self, has_conf=bool(conf_mode), use_offsets=self.use_offsets, sh_degree=self.sh_degree)
         # magic wrapper
