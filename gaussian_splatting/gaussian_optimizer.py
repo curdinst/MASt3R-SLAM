@@ -273,7 +273,7 @@ class GaussianOptimizer:
             if self.config["gaussians"]["average_correspondances"]:
                 valid = valid & self.averaged_masks[frame_idx] & l1_mask
             else:
-                valid = valid & l1_mask        
+                valid = valid & l1_mask
             if self.config["gaussians"]["fuse_gaussians"] and (((frame_idx == num_keyframes-1 or num_keyframes < 3) and not save_results) or not self.config["run_gaussian_optimizer"]):
                 print("fusing gaussians of keyframe", frame_idx)
                 gaussians_in = (w_means, sh, opacities_new, scales_new, w_rotations)
