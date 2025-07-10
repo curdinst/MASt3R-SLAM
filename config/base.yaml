@@ -25,6 +25,7 @@ gaussians:
   post_pose_optimization: False
   seed: 0
   fuse_gaussians: True
+  use_depth: False
   gaussian_fusion_params:
     rgb_threshold: 0.6
     depth_threshold: 0.5

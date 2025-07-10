@@ -249,10 +249,6 @@ def covariance_to_quaternion_and_scale(covariance, device='cuda:0'):
             atol=1e-6
         )
         # print(f"The rotation matrix is not orthonormal, identity_check: {identity_check}, determinant_check: {determinant_check}, det: {torch.linalg.det(rotation)}.")
-        # if not (identity_check and determinant_check):
-        #     raise ValueError(f"The rotation matrix is not orthonormal, identity_check: {identity_check}, determinant_check: {determinant_check}, det: {torch.linalg.det(rotation)}.")
-        # else:
-        #     print("The rotation matrix is orthonormal.")
 
         # Swap eigenvalue positions and adjust U to ensure determinant of 1
         negative_determinants = torch.linalg.det(U) < 0

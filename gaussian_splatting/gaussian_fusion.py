@@ -1,43 +1,7 @@
 import torch
 import torch.nn.functional as F
-import yaml
-import pathlib
-from mast3r_slam.mast3r_utils import mast3r_match_asymmetric
-from mast3r_slam.evaluate import save_gaussian_new_ply, save_as_ply
-from mast3r_slam.mast3r_utils import (
-    load_mast3r,
-    load_retriever,
-    mast3r_inference_mono,
-)
-import lietorch
-from mast3r_slam.dataloader import Intrinsics, load_dataset
-from mast3r_slam.frame import Frame
-from mast3r_slam.frame import Mode, SharedKeyframes, SharedStates, create_frame
-from mast3r_slam.config import load_config, config, set_global_config
-from mast3r_slam.mast3r_utils import mast3r_asymmetric_inference
-from mast3r_slam.evaluate import save_gaussian_new_ply, save_as_ply
-import mast3r_slam.evaluate as eval
 import mast3r_slam.utils.geometry as geometry
-from matplotlib import pyplot as plt
 import einops
-import numpy as np
-import time
-from scipy.spatial.transform import Rotation
-
-from gaussian_splatting.gaussian_renderer import render
-
-from gaussian_splatting.gaussian_renderer import render
-from gaussian_splatting.utils.loss_utils import l1_loss, ssim
-from gaussian_splatting.utils.graphics_utils import getProjectionMatrix2, getWorld2View2
-from gaussian_splatting.scene.gaussian_model import GaussianModel
-from gaussian_splatting.utils.camera_utils import Camera 
-from mast3r_slam.frame import Mode, SharedKeyframes, SharedStates, create_frame
-from mast3r_slam.geometry import constrain_points_to_ray, quat_mult
-from gaussian_splatting.utils.graphics_utils import focal2fov
-from gaussian_splatting.utils.pose_utils import update_pose
-from gaussian_splatting.utils.slam_utils import get_loss_tracking_rgb, get_loss_tracking_rgbd, get_loss_mapping_rgbd
-from gaussian_splatting.utils.image_utils import psnr
-from munch import munchify
 from torchvision.utils import save_image
 
 
