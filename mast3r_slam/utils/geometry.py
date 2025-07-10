@@ -165,66 +165,6 @@ def matrix_to_quaternion(matrix):
 
     return quaternions
 
-def inverse_build_covariance_torch(covariance_matrix):
-    """
-    Inverse function for build_covariance, using PyTorch.
-    Recovers the scale and rotation quaternion from a 3x3 covariance matrix.
-
-    Args:
-        covariance_matrix (torch.Tensor): A 3x3 symmetric positive semi-definite covariance matrix.
-                                          Can be a batch of matrices (..., 3, 3).
-
-    Returns:
-        tuple: A tuple containing:
-            - scale (torch.Tensor): A 3-dimensional tensor representing the original scale.
-                                    Shape (..., 3).
-            - rotation_xyzw (torch.Tensor): A 4-dimensional tensor representing the original quaternion (x, y, z, w).
-                                            Shape (..., 4).
-    """
-    # 1. Perform Eigen Decomposition
-    # torch.linalg.eigh returns eigenvalues in ascending order and corresponding eigenvectors.
-    # For a symmetric matrix, eigvals returns real eigenvalues and eigvecs returns orthogonal eigenvectors.
-    eigenvalues, eigenvectors = torch.linalg.eigh(covariance_matrix)
-
-    # Ensure eigenvalues are non-negative (due to potential numerical precision issues)
-    # Clamp to a small positive value to avoid issues with sqrt(negative number)
-    eigenvalues = torch.clamp(eigenvalues, min=1e-9)
-
-    # 2. Extract Scale
-    # The original scales are the square root of the eigenvalues.
-    scale = torch.sqrt(eigenvalues)
-
-    # 3. Extract Rotation (Quaternion)
-    # The eigenvectors matrix is the rotation matrix.
-    # We need to handle potential reflections (determinant -1).
-    # Check the determinant for the last two dimensions (the 3x3 matrix).
-    det_eigenvectors = torch.linalg.det(eigenvectors)
-
-    # If the determinant is -1, flip the sign of one of the eigenvectors to make it a proper rotation.
-    # It's arbitrary which column to flip, typically the last one.
-    # Need to handle batch dimensions.
-    # Create a mask for matrices with determinant < 0.
-    mask_reflection = det_eigenvectors < 0
-
-    # Apply the flip only to the matrices in the batch that are reflections.
-    # We need to use `where` or direct indexing carefully.
-    if mask_reflection.any():
-        # Create a new eigenvectors tensor to modify conditionally
-        eigenvectors_corrected = eigenvectors.clone()
-        eigenvectors_corrected[mask_reflection, :, 0] *= -1 # Flip the first column for those matrices
-
-        # Ensure the corrected matrix is still orthonormal if needed (e.g., QR decomposition)
-        # In practice, with eigh, this one flip should be enough for proper rotation.
-        # It maintains orthogonality and changes determinant from -1 to 1.
-
-        rotation_matrix = eigenvectors_corrected
-    else:
-        rotation_matrix = eigenvectors
-
-    # Convert the rotation matrix to a quaternion
-    rotation_xyzw = matrix_to_quaternion(rotation_matrix)
-
-    return scale, rotation_xyzw
 #@added
 def covariance_to_quaternion_and_scale(covariance, device='cuda:0'):
         '''Convert the covariance matrix to a four dimensional quaternion and
