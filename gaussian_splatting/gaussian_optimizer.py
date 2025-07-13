@@ -225,7 +225,7 @@ class GaussianOptimizer:
                 scales_new[mask_now],
                 w_rotations[mask_now]
             ) = gaussians_avg
-            return (w_means, sh, opacities_new, scales_new, w_rotations)
+        return (w_means, sh, opacities_new, scales_new, w_rotations)
 
     def prepare_gaussian_map(self, keyframes: SharedKeyframes, save_results=False):
         self.viewpoint_stack = {}
