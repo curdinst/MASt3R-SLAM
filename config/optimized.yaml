@@ -1,0 +1,17 @@
+inherit: "config/base.yaml"
+
+use_calib: True
+
+run_gaussian_optimizer: True
+gaussians:
+  init_lr: 3.0 #0.05 #6.0
+  num_iterations: 70
+  window_size: 10 # 2 newest frames are subtracted -> window_size = 2 newest frames + N random frames
+  average_correspondances: False
+  fuse_min_Kl_div: False
+  l1_mask: True
+  l1_threshold: 0.1
+  # densify_at_it_nr: [10, 20]
+  fuse_gaussians: True
+  use_depth: False
+  

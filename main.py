@@ -213,7 +213,12 @@ if __name__ == "__main__":
     print(f"Saving to {save_dir}")
     # config["tracking"]["save_dir"] = str(save_dir)
     shutil.copyfile("/home/curdinst/repos/MASt3R-SLAM/config/base.yaml", os.path.join(save_dir, "base.yaml"))
+    if args.config == "config/optimized.yaml":
+        shutil.copyfile("/home/curdinst/repos/MASt3R-SLAM/config/optimized.yaml", os.path.join(save_dir, "optimized.yaml"))
+
     # shutil.copyfile("/home/curdinst/repos/MASt3R-SLAM/config/calib.yaml", os.path.join(save_dir, "calib.yaml"))
+    # with open(save_dir / "config.yaml", "w") as f:
+    #     yaml.dump(config, f, default_flow_style=False)
 
     manager = mp.Manager()
     main2viz = new_queue(manager, args.no_viz)

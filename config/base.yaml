@@ -1,9 +1,9 @@
 use_calib: False
 # used_dataset: "datasets/tum/rgbd_dataset_freiburg1_desk"
-used_dataset: "datasets/replica/office2"
+# used_dataset: "datasets/replica/office2"
 # used_dataset: "datasets/replica/office1"
 # used_dataset: "datasets/replica/office3"
-# used_dataset: "datasets/replica/room0"
+used_dataset: "datasets/replica/room0"
 
 stop_at_frame: 900
 stop_at_keyframe: 30
