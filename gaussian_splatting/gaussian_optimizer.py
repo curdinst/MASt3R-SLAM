@@ -153,7 +153,7 @@ class GaussianOptimizer:
             print(f"frame {frame_idx} gaussians valid mask sum {keyframe.valid_match_i.sum()}")
             if self.config["gaussians"]["use_matching_mask"] and keyframe.gaussian_mask.sum() > 0:
                 valid_matching_mask = valid & keyframe.gaussian_mask
-            self.valid_masks[frame_idx] = valid
+            # self.valid_masks[frame_idx] = valid
             valid = torch.zeros_like(valid, dtype=torch.bool)
             valid[int(288*512//2):] = True
             depth = einops.rearrange(keyframe.X_canon[:, -1], "(h w) -> h w", h=self.intrinsics["H"], w=self.intrinsics["W"])
@@ -269,7 +269,7 @@ class GaussianOptimizer:
             if self.config["gaussians"]["average_correspondances"]:
                 valid = valid & self.averaged_masks[frame_idx] & l1_mask
             else:
-                valid = valid & l1_mask
+                valid = valid & l1_mask & keyframe.coarseness_mask
             if self.config["gaussians"]["fuse_gaussians"] and (((frame_idx == self.num_keyframes-1 or self.num_keyframes < 3) and not save_results) or not self.config["run_gaussian_optimizer"]):
                 print("fusing gaussians of keyframe", frame_idx)
                 gaussians_in = (w_means, sh, opacities_new, scales_new, w_rotations)
@@ -286,7 +286,7 @@ class GaussianOptimizer:
                 )
                 print(f"Frame {frame_idx} adding {valid.sum():,} points to gaussians {valid.sum()} -- fused")
             else:
-                valid = valid & self.valid_masks[frame_idx]
+                # valid = valid & self.valid_masks[frame_idx]
                 print(f"frame {frame_idx} adding {valid.sum():,} points to gaussians {valid.sum()}")
                 self.gaussians.add_points(
                     new_xyz=w_means[valid],
@@ -373,7 +373,7 @@ class GaussianOptimizer:
                     plt.axis("off")
                     # plt.subplot(1, 2, 1)
                     a,b = np.min(image_rearranged), np.max(image_rearranged)
-                    # plt.imshow((image_rearranged - a)/(b-a))
+                    plt.imshow((image_rearranged - a)/(b-a))
                     # plt.subplot(1, 2, 2)
                     # gt_img_rearranged = einops.rearrange(self.viewpoint_stack[frame_index].original_image.cpu().detach().numpy(), "c h w -> h w c")
                     # a,b = np.min(gt_img_rearranged), np.max(gt_img_rearranged)

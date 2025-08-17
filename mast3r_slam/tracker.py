@@ -42,7 +42,7 @@ class FrameTracker:
 
         save_gaussians_ply = False
         if save_gaussians_ply:
-            (Sff, Rff, SHff, Off, Mff, Skf, Rkf, SHkf, Okf, Mkf) = gaussian_params
+            (Sff, Rff, SHff, Off, Mff, Maskff, Skf, Rkf, SHkf, Okf, Mkf, Maskkf) = gaussian_params
             filename = "logs/gaussian_encode_seperatly.ply"
             save_gaussian_new_ply(save_path=filename,
                             S=torch.cat((Sff, Skf)),
@@ -50,6 +50,7 @@ class FrameTracker:
                             M=torch.cat((Mff,Mkf)),
                             SH=torch.cat((SHff, SHkf)),
                             O=torch.cat((Off, Okf)))
+        
         # Save idx for next
         self.idx_f2k = idx_f2k.clone()
 
@@ -58,11 +59,11 @@ class FrameTracker:
         valid_match_k = valid_match_k[0]
 
         Qk = torch.sqrt(Qff[idx_f2k] * Qkf)
-        (Sff, Rff, SHff, Off, Mff, Skf, Rkf, SHkf, Okf, Mkf) = gaussian_params
+        (Sff, Rff, SHff, Off, Mff, Maskff, Skf, Rkf, SHkf, Okf, Mkf, Maskkf) = gaussian_params
 
 
         # Update keyframe pointmap after registration (need pose)
-        frame.update_pointmap(Xff, Cff, Sff, Rff, SHff, Off, Mff)
+        frame.update_pointmap(Xff, Cff, Sff, Rff, SHff, Off, Mff, Maskff)
 
         # print(f"update gaussians of frame {frame.frame_id}")
         # frame.update_gaussians(Sff, Rff, SHff, Off, Mff)
@@ -129,7 +130,7 @@ class FrameTracker:
         # print(f"Xkf.mean after scaling {Xkk.mean()}")
 
         # Gaussian parameters
-        (Sff, Rff, SHff, Off, Mff, Skf, Rkf, SHkf, Okf, Mkf) = gaussian_params
+        (Sff, Rff, SHff, Off, Mff, Maskff, Skf, Rkf, SHkf, Okf, Mkf, Maskkf) = gaussian_params
         Mkk = T_CkCf.act(Mkf)
         Rkk = quat_mult(T_CkCf.data, Rkf)
         # Rkk = Rkf
@@ -137,7 +138,7 @@ class FrameTracker:
         # print(f"scale_CkCf {scale_CkCf}")
         Skk = scale_CkCf * Skf
         # Skk = Skf
-        keyframe.update_pointmap(Xkk, Ckf, Skk, Rkk, SHkf, Okf, Mkk)
+        keyframe.update_pointmap(Xkk, Ckf, Skk, Rkk, SHkf, Okf, Mkk, Maskkf)
 
 
 

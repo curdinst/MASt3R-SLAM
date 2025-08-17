@@ -41,6 +41,7 @@ class Frame:
     valid_match_i: Optional[torch.Tensor] = None
     idx_j2i: Optional[torch.Tensor] = None
     corresponding_frames: Optional[torch.Tensor] = None
+    coarseness_mask: Optional[torch.Tensor] = None
 
     def get_score(self, C):
         filtering_score = config["tracking"]["filtering_score"]
@@ -50,13 +51,12 @@ class Frame:
             score = torch.mean(C)
         return score
 
-    def update_pointmap(self, X: torch.Tensor, C: torch.Tensor, scale: torch.Tensor=None, rotation: torch.Tensor=None, SH: torch.Tensor=None, opacity: torch.Tensor=None, mean: torch.Tensor=None):
+    def update_pointmap(self, X: torch.Tensor, C: torch.Tensor, scale: torch.Tensor=None, rotation: torch.Tensor=None, SH: torch.Tensor=None, opacity: torch.Tensor=None, mean: torch.Tensor=None, mask: torch.Tensor=None):
         # if config["use_calib"]:
             # print(f"self.img_shape: {self.img_shape}")
             # print(f"self.K: {self.K}")
             # X = constrain_points_to_ray(self.img_shape[0,...], X[None, ...], self.K)[0, ...]
 
-        
         filtering_mode = config["tracking"]["filtering_mode"]
         if self.N == 0:
             self.X_canon = X.clone()
@@ -72,6 +72,8 @@ class Frame:
                 self.offsets = mean.clone() - self.X_canon # only store offsets
                 self.rotations = rotation.clone()
                 self.scales = scale.clone()
+                self.coarseness_mask = mask.clone()
+
                 # self.valid_match_i = torch.ones(X.shape[0], dtype=torch.bool, device=X.device)
                 # self.idx_j2i = torch.ones(X.shape[0], dtype=torch.bool, device=X.device)
             return
@@ -107,7 +109,7 @@ class Frame:
             self.X_canon = ((self.C * self.X_canon) + (C * X)) / (self.C + C)
             
             # Gaussian params
-            gaussian_filtering_mode = ["weigtend_average", "recent", "first"][0]
+            gaussian_filtering_mode = ["weigtend_average", "recent", "first"][1]
 
             if gaussian_filtering_mode == "weigtend_average" and scale is not None and self.scales is not None:
                 # self.SH = ((self.C.unsqueeze(1) * self.SH) + (C.unsqueeze(1) * SH)) / self.C.unsqueeze(1)
@@ -133,6 +135,8 @@ class Frame:
                 self.scales = scale.clone()
             self.C = self.C + C
             self.N += 1
+            self.coarseness_mask = mask
+            
         elif filtering_mode == "weighted_spherical":
 
             def cartesian_to_spherical(P):
@@ -269,6 +273,7 @@ class SharedStates:
         self.valid_match_i = torch.zeros(3, h * w, device=device, dtype=dtype).share_memory_()
         self.idx_j2i = torch.zeros(3, h * w, device=device, dtype=dtype).share_memory_()
         self.corresponding_frames = -1*torch.ones(3, device=device, dtype=torch.int).share_memory_()
+        self.coarseness_mask = torch.zeros(h * w, device=device, dtype=torch.bool).share_memory_()
         # fmt: on
 
     def set_frame(self, frame):
@@ -290,6 +295,7 @@ class SharedStates:
                 self.offsets[:] = frame.offsets
                 self.rotations[:] = frame.rotations
                 self.scales[:] = frame.scales
+                self.coarseness_mask[:] = frame.coarseness_mask
             if frame.valid_match_i is not None:
                 self.valid_match_i[:] = frame.valid_match_i
                 self.idx_j2i[:] = frame.idx_j2i
@@ -309,7 +315,7 @@ class SharedStates:
                 self.offsets,
                 self.rotations,
                 self.scales,
-                self.N
+                # self.N
             )
             frame.X_canon = self.X
             frame.C = self.C
@@ -324,7 +330,8 @@ class SharedStates:
             frame.valid_match_i = self.valid_match_i
             frame.idx_j2i = self.idx_j2i
             frame.corresponding_frames = self.corresponding_frames
-            frame.N = int(self.N[0])
+            frame.coarseness_mask = self.coarseness_mask
+            # frame.N = int(self.N[0])
             return frame
 
     def queue_global_optimization(self, idx):
@@ -407,6 +414,7 @@ class SharedKeyframes:
         self.valid_match_i = torch.zeros(buffer, 3, h * w, device=device, dtype=torch.bool).share_memory_()
         self.idx_j2i = torch.zeros(buffer, 3, h * w, device=device, dtype=torch.int).share_memory_()
         self.corresponding_frames = -1 * torch.ones(buffer, 3, device=device, dtype=torch.int).share_memory_()
+        self.coarseness_mask = torch.zeros(buffer, h * w, device=device, dtype=torch.bool).share_memory_()
 
     def __getitem__(self, idx) -> Frame:
         with self.lock:
@@ -422,7 +430,8 @@ class SharedKeyframes:
                 self.opacities[idx],
                 self.offsets[idx],
                 self.rotations[idx],
-                self.scales[idx]
+                self.scales[idx],
+                self.coarseness_mask[idx]
             )
             kf.X_canon = self.X[idx]
             kf.C = self.C[idx]
@@ -441,6 +450,7 @@ class SharedKeyframes:
                 kf.valid_match_i = self.valid_match_i[idx]
                 kf.idx_j2i = self.idx_j2i[idx]
                 kf.corresponding_frames = self.corresponding_frames[idx]
+                kf.coarseness_mask = self.coarseness_mask[idx]
             else:
                 print("get SH is None")
             return kf
@@ -476,6 +486,7 @@ class SharedKeyframes:
                 self.offsets[idx] = value.offsets
                 self.rotations[idx] = value.rotations
                 self.scales[idx] = value.scales
+                self.coarseness_mask[idx] = value.coarseness_mask
             else:
                 print("set SH is None")
             if value.valid_match_i is not None:

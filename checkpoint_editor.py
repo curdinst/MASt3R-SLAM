@@ -38,7 +38,6 @@ mast3r_gaussians = mast3r.copy()
 for key in splatt3r['state_dict'].keys():
     key_modified = key.replace('encoder.', '')
     mast3r_gaussians['model'][key_modified] = splatt3r['state_dict'][key]
-mast3r_gaussians['model'] = splatt3r['state_dict']
 
 
 # MASt3R_gaussians_v1 = torch.load('checkpoints/MASt3R_gaussians_v1.pth', map_location='cpu')

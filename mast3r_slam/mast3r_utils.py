@@ -228,6 +228,12 @@ def mast3r_asymmetric_inference(model, frame_i, frame_j):
     (res11_512, res11_256, res11_128, res11_coarseness_pred) = res11
     (res21_512, res21_256, res21_128, res21_coarseness_pred) = res21
 
+
+    res11_512['sh'], res21_512['sh'] = add_frame_color_to_sh(frame_i=frame_i, frame_j=frame_j, SHii=res11_512['sh'], SHji=res21_512['sh'])
+
+    res11_512, mask11_used_gaussians = use_coarseness_prediction(res11)
+    res21_512, mask21_used_gaussians = use_coarseness_prediction(res21)
+    MASKS = torch.stack([mask11_used_gaussians, mask21_used_gaussians])
     res = [res11_512, res21_512]
     
     X, C, D, Q, S, R, SH, O, M  = zip(
@@ -238,11 +244,87 @@ def mast3r_asymmetric_inference(model, frame_i, frame_j):
     X, C, D, Q = torch.stack(X), torch.stack(C), torch.stack(D), torch.stack(Q)
     S, R, SH, O, M = torch.stack(S), torch.stack(R), torch.stack(SH), torch.stack(O), torch.stack(M)
     X, C, D, Q = downsample(X, C, D, Q)
-    return X, C, D, Q, S, R, SH, O, M
+    return X, C, D, Q, S, R, SH, O, M, MASKS
 
+
+def use_coarseness_prediction(model_output):
+    (pred_512, pred_256, pred_128, coarseness) = model_output
+
+    valid = (pred_512['conf'] > 1.5)
+
+    # Downsample the SH coefficients
+    new_sh = pred_512['sh']
+    sh_256 = (new_sh[:,::2,::2,:] + new_sh[:,1::2,::2,:] + new_sh[:,::2,1::2,:] + new_sh[:,1::2,1::2,:])/ 4.0
+    pred_256['sh'] = pred_256['sh'] + sh_256
+    sh_128 = (sh_256[:,::2,::2,:] + sh_256[:,1::2,::2,:] + sh_256[:,::2,1::2,:] + sh_256[:,1::2,1::2,:])/ 4.0
+    pred_128['sh'] = pred_128['sh'] + sh_128
+
+    means = pred_512['means']
+    pred_256['means'] = (means[:,::2,::2,:] + means[:,1::2,::2,:] + means[:,::2,1::2,:] + means[:,1::2,1::2,:]) / 4.0
+    means_256 = pred_256['means']
+    pred_128['means'] = (means_256[:,::2,::2,:] + means_256[:,1::2,::2,:] + means_256[:,::2,1::2,:] + means_256[:,1::2,1::2,:]) / 4.0
+
+    classes = torch.argmax(coarseness, dim=1) # coarseness: (b, c, h, w) -> classes: (b, h, w)
+    # print(f"calasses.shape: {classes.shape}, coarseness.shape: {coarseness.shape}")   
+    mask_512_use = (classes == 0) & valid
+    mask_256_use = (classes == 1) & valid
+    mask_128_use = (classes == 2) & valid
+
+    # Save mask_512_use as an image
+    mask_256_use_256 = mask_256_use[:,::2,::2] & mask_256_use[:,1::2,::2] & mask_256_use[:,::2,1::2] & mask_256_use[:,1::2,1::2]
+    mask_128_use_256 = mask_128_use[:,::2,::2] & mask_128_use[:,1::2,::2] & mask_128_use[:,::2,1::2] & mask_128_use[:,1::2,1::2]
+    # print(f"mask_128_use.shape 2: {mask_128_use.shape}")
+    mask_128_use_128 = mask_128_use_256[:,::2,::2] & mask_128_use_256[:,1::2,::2] & mask_128_use_256[:,::2,1::2] & mask_128_use_256[:,1::2,1::2]
+    # print(f"mask_128_use.shape 3: {mask_128_use_256.shape}")
+    # print(f"mask_128_xor_256.shape: {mask_128_xor_256.shape}, mask_128_xor_128.shape: {mask_128_xor_128.shape}, mask_256_xor_512.shape: {mask_256_xor_512.shape}")
+    # mask_128_xor_256_512 = torch.nn.functional.interpolate(mask_128_xor_256.float().unsqueeze(1), scale_factor=2, mode='nearest').squeeze(1).bool()
+    # mask_128_xor_128_256 = torch.nn.functional.interpolate(mask_128_xor_128.float().unsqueeze(1), scale_factor=2, mode='nearest').squeeze(1).bool()
+    # print(f"mask_128_xor_128_256.shape: {mask_128_xor_128_256.shape}, mask_128_xor_256_512.shape: {mask_128_xor_256_512.shape}, mask_256_xor_512.shape: {mask_256_xor_512.shape}")
+
+
+    # mask_128_use_128 to use on 128 resolution
+    mask_128_use_128_upsampled_256 = torch.nn.functional.interpolate(mask_128_use_128.float().unsqueeze(1), scale_factor=2, mode='nearest').squeeze(1).bool()
+    mask_128_to_256 = mask_128_use_256 & ~mask_128_use_128_upsampled_256
+    mask_256_use_256 = mask_256_use_256 | mask_128_to_256
+
+    mask_128_use_256_upsampled_512 = torch.nn.functional.interpolate(mask_128_use_256.float().unsqueeze(1), scale_factor=2, mode='nearest').squeeze(1).bool()
+    mask_128_to_512 = mask_128_use & ~mask_128_use_256_upsampled_512
+
+    mask_256_upsampled_512 = torch.nn.functional.interpolate(mask_256_use_256.float().unsqueeze(1), scale_factor=2, mode='nearest').squeeze(1).bool()
+    mask_256_to_512 = mask_256_use & ~mask_256_upsampled_512
+    mask_512_use = mask_512_use | mask_256_to_512 | mask_128_to_512
+
+    mask_256_indices = torch.nonzero(mask_256_use_256)
+    u_256, v_256 = mask_256_indices[:, 1]*2, mask_256_indices[:, 2]*2
+    mask_128_indices = torch.nonzero(mask_128_use_128)
+    u_128, v_128 = mask_128_indices[:, 1]*4, mask_128_indices[:, 2]*4
+
+    for key in pred_512.keys():
+        if key not in ["means", "means_in_other_view", "opacities", "sh", "rotations", "scales", "covariances"]:
+            continue
+        # pred_512[key][0,mask_512_use[0,...],...] Stays the same
+        pred_512[key][0,u_256, v_256, ...] = pred_256[key][0,mask_256_use_256[0,...],...]
+        pred_512[key][0,u_128, v_128, ...] = pred_128[key][0,mask_128_use_128[0,...],...]
+    
+    mask_used_gaussians = mask_512_use
+    mask_used_gaussians[:,u_256, v_256] = True
+    mask_used_gaussians[:,u_128, v_128] = True
+    mask_used_gaussians = mask_used_gaussians.squeeze(0) # (b, h, w) -> (h, w)
+    
+    return pred_512, mask_used_gaussians #(mask in (h, w) format)
+
+def add_frame_color_to_sh(frame_i, frame_j, SHii, SHji):
+    # add frame colors to sh colors
+    new_sh1 = torch.zeros_like(SHii)
+    new_sh2 = torch.zeros_like(SHji)
+    new_sh1[..., 0] = sh_utils.RGB2SH(einops.rearrange(frame_i.img/2.0+0.5, 'b c h w -> b h w c'))
+    new_sh2[..., 0] = sh_utils.RGB2SH(einops.rearrange(frame_j.img/2.0+0.5, 'b c h w -> b h w c'))
+    SHii = SHii + new_sh1
+    SHji = SHji + new_sh2
+    return SHii, SHji
 
 def mast3r_match_asymmetric(model, frame_i, frame_j, idx_i2j_init=None):
-    X, C, D, Q, S, R, SH, O, M = mast3r_asymmetric_inference(model, frame_i, frame_j)
+    X, C, D, Q, S, R, SH, O, M, MASKS = mast3r_asymmetric_inference(model, frame_i, frame_j)
 
     b, h, w = X.shape[:-1]
     # 2 outputs per inference
@@ -268,16 +350,17 @@ def mast3r_match_asymmetric(model, frame_i, frame_j, idx_i2j_init=None):
     SHii, SHji = einops.rearrange(SH, "b h w c d -> b (h w) c d")
     Oii, Oji = einops.rearrange(O, "b h w c -> b (h w) c")
     Mii, Mji = einops.rearrange(M, "b h w c -> b (h w) c")
+    Maskii, Maskji = einops.rearrange(MASKS, "b h w -> b (h w)")
 
-    # add frame colors to sh colors
-    new_sh1 = torch.zeros_like(SHii)
-    new_sh2 = torch.zeros_like(SHji)
-    new_sh1[..., 0] = sh_utils.RGB2SH(einops.rearrange(frame_i.img/2.0+0.5, 'b c h w -> b (h w) c'))
-    new_sh2[..., 0] = sh_utils.RGB2SH(einops.rearrange(frame_j.img/2.0+0.5, 'b c h w -> b (h w) c'))
-    SHii = SHii + new_sh1
-    SHji = SHji + new_sh2
+    # # add frame colors to sh colors
+    # new_sh1 = torch.zeros_like(SHii)
+    # new_sh2 = torch.zeros_like(SHji)
+    # new_sh1[..., 0] = sh_utils.RGB2SH(einops.rearrange(frame_i.img/2.0+0.5, 'b c h w -> b (h w) c'))
+    # new_sh2[..., 0] = sh_utils.RGB2SH(einops.rearrange(frame_j.img/2.0+0.5, 'b c h w -> b (h w) c'))
+    # SHii = SHii + new_sh1
+    # SHji = SHji + new_sh2
 
-    gaussian_params = (Sii, Rii, SHii, Oii, Mii, Sji, Rji, SHji, Oji, Mji)
+    gaussian_params = (Sii, Rii, SHii, Oii, Mii, Maskii, Sji, Rji, SHji, Oji, Mji, Maskji)
     return idx_i2j, valid_match_j, Xii, Cii, Qii, Xji, Cji, Qji, gaussian_params
 
 
