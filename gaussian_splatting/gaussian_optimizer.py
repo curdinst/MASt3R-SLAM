@@ -373,7 +373,7 @@ class GaussianOptimizer:
                     plt.axis("off")
                     # plt.subplot(1, 2, 1)
                     a,b = np.min(image_rearranged), np.max(image_rearranged)
-                    plt.imshow((image_rearranged - a)/(b-a))
+                    # plt.imshow((image_rearranged - a)/(b-a))
                     # plt.subplot(1, 2, 2)
                     # gt_img_rearranged = einops.rearrange(self.viewpoint_stack[frame_index].original_image.cpu().detach().numpy(), "c h w -> h w c")
                     # a,b = np.min(gt_img_rearranged), np.max(gt_img_rearranged)
@@ -440,7 +440,8 @@ class GaussianOptimizer:
         # if len(keyframes) > 2: return
         # del self.viewpoint_stack
         self.num_keyframes = len(keyframes)
-        self.prepare_averaging_masks(keyframes=keyframes)
+        if self.config["gaussians"]["average_correspondances"]:
+            self.prepare_averaging_masks(keyframes=keyframes)
         self.prepare_gaussian_map(keyframes=keyframes, save_results=save_results)
         self.run_optimisation(keyframes=keyframes, iters=iters, save_results=save_results, path=path)
         if save_results:

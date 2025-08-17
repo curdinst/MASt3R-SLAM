@@ -101,9 +101,11 @@ def mast3r_decode_symmetric_batch(
 
         (res11_512, res11_256, res11_128, res11_coarseness_pred) = res11
         (res21_512, res21_256, res21_128, res21_coarseness_pred) = res21
-        res = [res11_512, res21_512]
+        (res22_512, res22_256, res22_128, res22_coarseness_pred) = res22
+        (res12_512, res12_256, res12_128, res12_coarseness_pred) = res12
+        res = [res11_512, res21_512, res22_512, res12_512]
 
-        res = [res11, res21, res22, res12]
+        # res = [res11, res21, res22, res12]
         Xb, Cb, Db, Qb = zip(
             *[
                 (r["pts3d"][0], r["conf"][0], r["desc"][0], r["desc_conf"][0])
@@ -114,6 +116,8 @@ def mast3r_decode_symmetric_batch(
         C.append(torch.stack(Cb, dim=0))
         D.append(torch.stack(Db, dim=0))
         Q.append(torch.stack(Qb, dim=0))
+
+        # P(T|indizien) = P(T, indizien) / P(indizien)
 
     X, C, D, Q = (
         torch.stack(X, dim=1),

@@ -259,6 +259,7 @@ class SharedStates:
         self.C = torch.zeros(h * w, 1, device=device, dtype=dtype).share_memory_()
         self.feat = torch.zeros(1, self.num_patches, self.feat_dim, device=device, dtype=dtype).share_memory_()
         self.pos = torch.zeros(1, self.num_patches, 2, device=device, dtype=torch.long).share_memory_()
+        self.N = torch.zeros(1, device=device, dtype=torch.int).share_memory_()
         # Gaussian parameters
         self.SH = torch.zeros(h * w, 3, 1, device=device, dtype=dtype).share_memory_()
         self.opacities = torch.zeros(h * w, 1, device=device, dtype=dtype).share_memory_()
@@ -282,6 +283,7 @@ class SharedStates:
             self.C[:] = frame.C
             self.feat[:] = frame.feat
             self.pos[:] = frame.pos
+            self.N[:] = frame.N
             if frame.SH is not None:
                 self.SH[:] = frame.SH
                 self.opacities[:] = frame.opacities
@@ -306,7 +308,8 @@ class SharedStates:
                 self.opacities,
                 self.offsets,
                 self.rotations,
-                self.scales
+                self.scales,
+                self.N
             )
             frame.X_canon = self.X
             frame.C = self.C
@@ -321,6 +324,7 @@ class SharedStates:
             frame.valid_match_i = self.valid_match_i
             frame.idx_j2i = self.idx_j2i
             frame.corresponding_frames = self.corresponding_frames
+            frame.N = int(self.N[0])
             return frame
 
     def queue_global_optimization(self, idx):

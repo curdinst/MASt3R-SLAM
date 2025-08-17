@@ -7,7 +7,7 @@ used_dataset: "datasets/replica/room0"
 
 stop_at_frame: 900
 stop_at_keyframe: 30
-run_backend: True
+run_backend: False
 run_gaussian_optimizer: False
 gaussians:
   init_lr: 3.0 #0.05 #6.0
@@ -16,7 +16,7 @@ gaussians:
   tracking_itr_num: 100
   c_conf_threshold: 1.5
   use_matching_mask: False
-  average_correspondances: True
+  average_correspondances: False
   fuse_min_Kl_div: False
   l1_mask: False
   l1_threshold: 0.1
