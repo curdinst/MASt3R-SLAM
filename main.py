@@ -252,7 +252,8 @@ if __name__ == "__main__":
         )
         viz.start()
 
-    model = load_mast3r(device=device, path="checkpoints/MASt3R_gaussians_v1.pth")
+    # model = load_mast3r(device=device, path="checkpoints/MASt3R_gaussians_v1.pth")
+    model = load_mast3r(device=device, path="checkpoints/MASt3R_gaussians_3stage.pth")
     # model = load_mast3r(device=device)
     model.share_memory()
     

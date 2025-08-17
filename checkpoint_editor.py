@@ -27,28 +27,28 @@ import torch
 # import workspace
 
 
-# mast3r = torch.load('checkpoints/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric.pth')
-# splatt3r = torch.load('checkpoints/splatt3r.ckpt')
+mast3r = torch.load('checkpoints/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric.pth')
+splatt3r = torch.load('/home/curdinst/repos/splatt3r/checkpoints/keep/25-08-11-20-19-28_epoch=15_step=65376.ckpt')
 # print(mast3r.keys())
 # print(mast3r['args'])
 # print("---------------------------------------------------------------")
 # print(splatt3r.keys())
 
-# mast3r_gaussians = mast3r.copy()
-# for key in splatt3r['state_dict'].keys():
-#     key_modified = key.replace('encoder.', '')
-#     mast3r_gaussians['model'][key_modified] = splatt3r['state_dict'][key]
-# mast3r_gaussians['model'] = splatt3r['state_dict']
+mast3r_gaussians = mast3r.copy()
+for key in splatt3r['state_dict'].keys():
+    key_modified = key.replace('encoder.', '')
+    mast3r_gaussians['model'][key_modified] = splatt3r['state_dict'][key]
+mast3r_gaussians['model'] = splatt3r['state_dict']
 
 
-MASt3R_gaussians_v1 = torch.load('checkpoints/MASt3R_gaussians_v1.pth', map_location='cpu')
-MASt3R_gaussians_v1_keys = MASt3R_gaussians_v1['model'].keys()
+# MASt3R_gaussians_v1 = torch.load('checkpoints/MASt3R_gaussians_v1.pth', map_location='cpu')
+# MASt3R_gaussians_v1_keys = MASt3R_gaussians_v1['model'].keys()
 
-for key in MASt3R_gaussians_v1_keys:
-    if 'gaussian' in key:
-        print(key)
+# for key in MASt3R_gaussians_v1_keys:
+#     if 'gaussian' in key:
+#         print(key)
 
-print(MASt3R_gaussians_v1['model']['downstream_head1.dpt.act_postprocess.0.0.weight'])
+# print(MASt3R_gaussians_v1['model']['downstream_head1.dpt.act_postprocess.0.0.weight'])
 
 
-# torch.save(mast3r_gaussians, 'checkpoints/MASt3R_gaussians_v1.pth')
+torch.save(mast3r_gaussians, 'checkpoints/MASt3R_gaussians_3stage.pth')

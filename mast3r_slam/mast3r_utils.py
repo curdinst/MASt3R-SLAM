@@ -98,6 +98,11 @@ def mast3r_decode_symmetric_batch(
         pos2 = pos_j[b][None]
         res11, res21 = decoder(model, feat1, feat2, pos1, pos2, shape_i[b], shape_j[b])
         res22, res12 = decoder(model, feat2, feat1, pos2, pos1, shape_j[b], shape_i[b])
+
+        (res11_512, res11_256, res11_128, res11_coarseness_pred) = res11
+        (res21_512, res21_256, res21_128, res21_coarseness_pred) = res21
+        res = [res11_512, res21_512]
+
         res = [res11, res21, res22, res12]
         Xb, Cb, Db, Qb = zip(
             *[
@@ -130,7 +135,11 @@ def mast3r_inference_mono(model, frame):
     shape = frame.img_true_shape
 
     res11, res21 = decoder(model, feat, feat, pos, pos, shape, shape)
-    res = [res11, res21]
+
+    (res11_512, res11_256, res11_128, res11_coarseness_pred) = res11
+    (res21_512, res21_256, res21_128, res21_coarseness_pred) = res21
+
+    res = [res11_512, res21_512]
     X, C, D, Q = zip(
         *[(r["pts3d"][0], r["conf"][0], r["desc"][0], r["desc_conf"][0]) for r in res]
     )
@@ -212,7 +221,11 @@ def mast3r_asymmetric_inference(model, frame_i, frame_j):
     shape1, shape2 = frame_i.img_true_shape, frame_j.img_true_shape
 
     res11, res21 = decoder(model, feat1, feat2, pos1, pos2, shape1, shape2)
-    res = [res11, res21]
+    (res11_512, res11_256, res11_128, res11_coarseness_pred) = res11
+    (res21_512, res21_256, res21_128, res21_coarseness_pred) = res21
+
+    res = [res11_512, res21_512]
+    
     X, C, D, Q, S, R, SH, O, M  = zip(
         *[(r["pts3d"][0], r["conf"][0], r["desc"][0], r["desc_conf"][0], r["scales"][0], r["rotations"][0], r["sh"][0], r["opacities"][0], r["means"][0]) for r in res]
     )
