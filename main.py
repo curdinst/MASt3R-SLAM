@@ -80,7 +80,7 @@ def run_gaussian_optimization(cfg, dataset, model, states: SharedStates, keyfram
     set_global_config(cfg)
     device = keyframes.device
     # factor_graph = FactorGraph(model, keyframes, K, device)
-    retrieval_database = load_retriever(model)
+    # retrieval_database = load_retriever(model)
 
     gaussian_optimizer = GaussianOptimizer(config, dataset, device)
     len_frames_before = 0
@@ -253,7 +253,9 @@ if __name__ == "__main__":
         viz.start()
 
     # model = load_mast3r(device=device, path="checkpoints/MASt3R_gaussians_v1.pth")
-    model = load_mast3r(device=device, path="checkpoints/MASt3R_gaussians_3stage.pth")
+    # model = load_mast3r(device=device, path="checkpoints/MASt3R_gaussians_3stage_v0.pth")
+    model = load_mast3r(device=device, path="checkpoints/MASt3R_gaussians_3stage_single_map.pth")
+    
     # model = load_mast3r(device=device)
     model.share_memory()
     

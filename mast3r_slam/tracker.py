@@ -59,11 +59,11 @@ class FrameTracker:
         valid_match_k = valid_match_k[0]
 
         Qk = torch.sqrt(Qff[idx_f2k] * Qkf)
-        (Sff, Rff, SHff, Off, Mff, Maskff, Skf, Rkf, SHkf, Okf, Mkf, Maskkf) = gaussian_params
+        (Sff, Rff, SHff, Off, Mff, Maskff, Coarse_predff, Skf, Rkf, SHkf, Okf, Mkf, Maskkf, Coarse_predkf) = gaussian_params
 
 
         # Update keyframe pointmap after registration (need pose)
-        frame.update_pointmap(Xff, Cff, Sff, Rff, SHff, Off, Mff, Maskff)
+        frame.update_pointmap(Xff, Cff, Sff, Rff, SHff, Off, Mff, Maskff, Coarse_predff)
 
         # print(f"update gaussians of frame {frame.frame_id}")
         # frame.update_gaussians(Sff, Rff, SHff, Off, Mff)
@@ -130,7 +130,7 @@ class FrameTracker:
         # print(f"Xkf.mean after scaling {Xkk.mean()}")
 
         # Gaussian parameters
-        (Sff, Rff, SHff, Off, Mff, Maskff, Skf, Rkf, SHkf, Okf, Mkf, Maskkf) = gaussian_params
+        (Sff, Rff, SHff, Off, Mff, Maskff, Coarse_predff, Skf, Rkf, SHkf, Okf, Mkf, Maskkf, Coarse_predkf) = gaussian_params
         Mkk = T_CkCf.act(Mkf)
         Rkk = quat_mult(T_CkCf.data, Rkf)
         # Rkk = Rkf
@@ -138,8 +138,7 @@ class FrameTracker:
         # print(f"scale_CkCf {scale_CkCf}")
         Skk = scale_CkCf * Skf
         # Skk = Skf
-        keyframe.update_pointmap(Xkk, Ckf, Skk, Rkk, SHkf, Okf, Mkk, Maskkf)
-
+        keyframe.update_pointmap(Xkk, Ckf, Skk, Rkk, SHkf, Okf, Mkk, Maskkf, Coarse_predkf)
 
 
         # Rkk = T_CkCf.act(Rkf)

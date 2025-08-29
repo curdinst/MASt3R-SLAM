@@ -146,7 +146,7 @@ def fuse_gaussians(gaussians_in, valid, img, depth, img_size, config, device):
     # fused_opacities = einops.rearrange(fused_opacities, "c n-> n c")
     # fused_sh = einops.rearrange(fused_sh, "c n -> n c")
     fused_covariances = einops.rearrange(fused_covariances, "x y n -> n x y")
-    fused_rotations, fused_scales = geometry.covariance_to_quaternion_and_scale(fused_covariances)
+    fused_rotations, fused_scales = geometry.covariance_to_quaternion_and_scale(fused_covariances, device=device)
     fused_rotations = einops.rearrange(fused_rotations, "n c -> c n")
     fused_scales = einops.rearrange(fused_scales, "n c -> c n")
     # print(f"fused_scales shape: {fused_scales.shape}")

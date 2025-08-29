@@ -53,7 +53,7 @@ save_ply = True
 load_config("config/base.yaml")
 
 device = "cuda:0"
-model = load_mast3r(device=device, path="checkpoints/MASt3R_gaussians_v1.pth")
+model = load_mast3r(device=device, path="checkpoints/MASt3R_gaussians_3stage_v0.pth")
 # model = load_mast3r(device=device)
 model.share_memory()
 print("loaded model")
@@ -65,7 +65,7 @@ H, W = dataset.get_img_shape()[0]
 img_size = (H, W)
 print("Image size:", img_size)
 
-img1_idx, img2_idx = 0, 24
+img1_idx, img2_idx = 71, 0
 timestamp1, img1 = dataset[img1_idx]
 timestamp2, img2 = dataset[img2_idx]
 
@@ -248,7 +248,10 @@ print(f"image1 max: {image1.max()}, min: {image1.min()}")
 
 # frame2.img = einops.rearrange(frame2.img, "b c h w ->(b c) h w")
 idx_i2j, valid_match_j, Xii, Cii, Qii, Xji, Cji, Qji, gaussian_params = mast3r_match_asymmetric(model=model, frame_i=frame1, frame_j=frame2)
-(Sii, Rii, SHii, Oii, Mii, Sji, Rji, SHji, Oji, Mji) = gaussian_params
+# (Sii, Rii, SHii, Oii, Mii, Sji, Rji, SHji, Oji, Mji) = gaussian_params
+
+
+exit()
 
 save_dir = pathlib.Path("logs")
 save_dir.mkdir(exist_ok=True, parents=True)

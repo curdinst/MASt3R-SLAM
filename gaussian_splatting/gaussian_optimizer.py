@@ -26,6 +26,7 @@ from gaussian_splatting.utils.pose_utils import update_pose
 from gaussian_splatting.utils.slam_utils import get_loss_tracking_rgb, get_loss_tracking_rgbd, get_loss_mapping_rgbd
 from gaussian_splatting.utils.general_utils import slerp
 from gaussian_splatting.gaussian_fusion import fuse_gaussians
+from mast3r_slam.mast3r_utils import use_coarseness_prediction_for_means
 import mast3r_slam.utils.geometry as geometry
 
 from matplotlib import pyplot as plt
@@ -113,6 +114,7 @@ class GaussianOptimizer:
             assert not (self.config["gaussians"]["num_iterations"]  > 0) and not self.config["gaussians"]["l1_mask"], "No calibration used, cannot use gaussian optimisation or l1_mask"
         if self.config["gaussians"]["num_iterations"] > 0:
             assert not self.config["gaussians"]["average_correspondances"], "No average_correspondances if optimisation is used"
+    
     def prepare_averaging_masks(self, keyframes: SharedKeyframes):
         for frame_idx in range(self.num_keyframes):
             keyframe = keyframes[frame_idx]
@@ -151,9 +153,9 @@ class GaussianOptimizer:
         if self.config["gaussians"]["use_depth"]:
             self.valid_masks[frame_idx] = valid
             print(f"frame {frame_idx} gaussians valid mask sum {keyframe.valid_match_i.sum()}")
-            if self.config["gaussians"]["use_matching_mask"] and keyframe.gaussian_mask.sum() > 0:
+            if self.config["gaussians"]["mask_correspondances"] and keyframe.gaussian_mask.sum() > 0:
                 valid_matching_mask = valid & keyframe.gaussian_mask
-            # self.valid_masks[frame_idx] = valid
+            self.valid_masks[frame_idx] = valid
             valid = torch.zeros_like(valid, dtype=torch.bool)
             valid[int(288*512//2):] = True
             depth = einops.rearrange(keyframe.X_canon[:, -1], "(h w) -> h w", h=self.intrinsics["H"], w=self.intrinsics["W"])
@@ -171,11 +173,26 @@ class GaussianOptimizer:
     def tranform_gaussians_to_world(self, keyframe):
         scales_new = (keyframe.T_WC.data[0,-1] * keyframe.scales)
         w_rotations = quat_mult(keyframe.T_WC.data, keyframe.rotations)
+
+        means = keyframe.X_canon + keyframe.offsets
+        means_2d = einops.rearrange(means, "(h w) c -> 1 h w c", h=self.intrinsics["H"], w=self.intrinsics["W"])
+        coarseness_pred_2d = einops.rearrange(keyframe.coarseness_pred, "c (h w) -> c h w", h=self.intrinsics["H"], w=self.intrinsics["W"])
+        coarse_pred_means = use_coarseness_prediction_for_means(means_2d, coarseness_pred_2d) # Avarages the means for coarser gaussians
+        coarse_pred_means_1d = einops.rearrange(coarse_pred_means, "1 h w c -> (h w) c")
+
         if self.config["use_calib"]:
-            X_ray = constrain_points_to_ray(keyframe.img_shape.flatten()[:2], keyframe.X_canon[None], keyframe.K)
-            w_means = keyframe.T_WC.act(X_ray[0,...] + keyframe.offsets)
+            print(f"keyframe.img_shape.flatten()[:2]: {keyframe.img_shape.flatten()[:2]}")
+            print(f"keyframe.X_canon.shape: {keyframe.X_canon.shape}")
+            print(f"coarse_pred_means_1d shape: {coarse_pred_means_1d.shape}")
+            X_ray = constrain_points_to_ray(keyframe.img_shape.flatten()[:2], coarse_pred_means_1d[None], keyframe.K)
+            w_means = keyframe.T_WC.act(X_ray[0,...])
         else:
-            w_means = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets)
+            w_means = keyframe.T_WC.act(coarse_pred_means_1d)
+        # if self.config["use_calib"]:
+        #     X_ray = constrain_points_to_ray(keyframe.img_shape.flatten()[:2], keyframe.X_canon[None], keyframe.K)
+        #     w_means = keyframe.T_WC.act(X_ray[0,...] + keyframe.offsets)
+        # else:
+        #     w_means = keyframe.T_WC.act(keyframe.X_canon + keyframe.offsets)
         return w_means, scales_new, w_rotations
 
     def average_correspondances(self, keyframes: SharedKeyframes, keyframe, gaussians, valid):
@@ -265,11 +282,25 @@ class GaussianOptimizer:
                 # self.valid_masks[frame_idx] = l1_mask
                 # print(f"l1_loss_mask shape reshaped {l1_loss_mask.shape}")
                 # print(f"l1_mask shape {l1_mask.shape}, l1_mask sum {l1_mask.sum()}")
-
             if self.config["gaussians"]["average_correspondances"]:
                 valid = valid & self.averaged_masks[frame_idx] & l1_mask
+            elif self.config["gaussians"]["mask_correspondances"]:
+                # correspondence_mask = keyframe.valid_match_i[0, ...] | keyframe.valid_match_i[1, ...] | keyframe.valid_match_i[2, ...] #valid_match_i: (3, H*W)
+                correspondence_mask = self.averaged_masks[frame_idx]
+                correspondence_mask_2d = einops.rearrange(correspondence_mask, "(h w) -> h w", h=self.intrinsics["H"], w=self.intrinsics["W"])
+                correspondence_mask_img = correspondence_mask_2d.cpu().detach().numpy()
+                plt.figure()
+                plt.title(f"Correspondence Mask for Frame {frame_idx}")
+                plt.axis("off")
+                plt.imshow(correspondence_mask_img, cmap="gray")
+                plt.savefig(f"logs/correspondence_mask_frame_{frame_idx}.png")
+                plt.close()
+                valid = valid & correspondence_mask & keyframe.coarseness_mask
             else:
                 valid = valid & l1_mask & keyframe.coarseness_mask
+
+            print(f"num coaresness: {keyframe.coarseness_mask.sum()} for frame {frame_idx}")
+
             if self.config["gaussians"]["fuse_gaussians"] and (((frame_idx == self.num_keyframes-1 or self.num_keyframes < 3) and not save_results) or not self.config["run_gaussian_optimizer"]):
                 print("fusing gaussians of keyframe", frame_idx)
                 gaussians_in = (w_means, sh, opacities_new, scales_new, w_rotations)
@@ -283,6 +314,7 @@ class GaussianOptimizer:
                     new_opacities = fused_opacities[valid],
                     new_scales = fused_scales[valid],
                     new_rotations =  fused_rotations[valid],
+                    device=self.device
                 )
                 print(f"Frame {frame_idx} adding {valid.sum():,} points to gaussians {valid.sum()} -- fused")
             else:
@@ -293,7 +325,8 @@ class GaussianOptimizer:
                     new_features_dc=sh[valid],
                     new_opacities=opacities_new[valid],
                     new_scales=scales_new[valid],
-                    new_rotations=w_rotations[valid]
+                    new_rotations=w_rotations[valid],
+                    device=self.device
                 )
             print(f"valid sum2: {valid.sum()}")
             if frame_idx in self.valid_masks.keys():
@@ -380,7 +413,14 @@ class GaussianOptimizer:
                     # plt.imshow((gt_img_rearranged- a)/(b-a) )
                     plt.savefig(path / f"render_{frame_index}.png")
                     plt.close()
-                
+                    plt.figure()
+                    plt.title(f"frame_index {frame_index} coarseness prediction")
+                    plt.axis("off")
+                    coarseness_pred_img = einops.rearrange(keyframes[frame_index].coarseness_pred.float(), " c (h w) -> h w c", h=self.intrinsics["H"], w=self.intrinsics["W"]).cpu().detach().numpy()
+                    plt.imshow(coarseness_pred_img)
+                    plt.savefig(path / f"coarseness_pred_{frame_index}.png")
+                    plt.close()
+
             if not save_results:
                 loss_mapping.backward()
                 with torch.no_grad():
@@ -440,14 +480,14 @@ class GaussianOptimizer:
         # if len(keyframes) > 2: return
         # del self.viewpoint_stack
         self.num_keyframes = len(keyframes)
-        if self.config["gaussians"]["average_correspondances"]:
+        if self.config["gaussians"]["average_correspondances"] or self.config["gaussians"]["mask_correspondances"]:
             self.prepare_averaging_masks(keyframes=keyframes)
         self.prepare_gaussian_map(keyframes=keyframes, save_results=save_results)
         self.run_optimisation(keyframes=keyframes, iters=iters, save_results=save_results, path=path)
         if save_results:
             self.draw_cameras()
 
-        if True:
+        if False:
             self.save_gaussians_to_keyframes(keyframes)
         if save_results:
             for kf_idx in range(self.num_keyframes):
@@ -543,7 +583,7 @@ class GaussianOptimizer:
             matrix1 = torch.einsum('ij,ik->ijk', mean_offset1, mean_offset1)
             matrix2 = torch.einsum('ij,ik->ijk', mean_offset2, mean_offset2)
             fused_covariances = (cov1 + matrix1 + cov2 + matrix2) / 2.0
-            rotations_1[inlier_mask], scales_1[inlier_mask] = geometry.covariance_to_quaternion_and_scale(fused_covariances)
+            rotations_1[inlier_mask], scales_1[inlier_mask] = geometry.covariance_to_quaternion_and_scale(fused_covariances, device=self.device)
             means_1[inlier_mask] = means_avg
         else:
             # scales_1[inlier_mask] = torch.sqrt((scales_1[inlier_mask]**2 + scales_2[inlier_mask]**2))
@@ -608,7 +648,8 @@ class GaussianOptimizer:
                 new_features_dc=frustum_color.repeat(frustum_vertices_world.shape[0], 1)[..., None],
                 new_opacities=frustum_opacity.repeat(frustum_vertices_world.shape[0])[..., None],
                 new_scales=frustum_scale.repeat(frustum_vertices_world.shape[0], 3),
-                new_rotations=rotation.repeat(frustum_vertices_world.shape[0], 1)
+                new_rotations=rotation.repeat(frustum_vertices_world.shape[0], 1),
+                device= self.device
             )
 
     def save_results(self, path, keyframes):
