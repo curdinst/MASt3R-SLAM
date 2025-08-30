@@ -111,7 +111,7 @@ class Frame:
             self.X_canon = ((self.C * self.X_canon) + (C * X)) / (self.C + C)
             
             # Gaussian params
-            gaussian_filtering_mode = ["weigtend_average", "recent", "first"][1]
+            gaussian_filtering_mode = ["weigtend_average", "recent", "first"][0]
 
             if gaussian_filtering_mode == "weigtend_average" and scale is not None and self.scales is not None:
                 # self.SH = ((self.C.unsqueeze(1) * self.SH) + (C.unsqueeze(1) * SH)) / self.C.unsqueeze(1)
