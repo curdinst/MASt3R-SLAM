@@ -1,12 +1,12 @@
 use_calib: False
 # used_dataset: "datasets/tum/rgbd_dataset_freiburg1_desk"
-# used_dataset: "datasets/replica/office2"
+used_dataset: "datasets/replica/office2"
 # used_dataset: "datasets/replica/office1"
 # used_dataset: "datasets/replica/office3"
-used_dataset: "datasets/replica/room0"
+# used_dataset: "datasets/replica/room0"
 
 stop_at_frame: 900
-stop_at_keyframe: 30
+stop_at_keyframe: 20
 run_backend: True
 run_gaussian_optimizer: False
 gaussians:
@@ -24,7 +24,7 @@ gaussians:
   pre_pose_optimization: False
   post_pose_optimization: False
   seed: 0
-  fuse_gaussians: True
+  fuse_gaussians: False
   use_depth: False
   gaussian_fusion_params:
     rgb_threshold: 0.6
