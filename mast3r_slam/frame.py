@@ -43,6 +43,7 @@ class Frame:
     corresponding_frames: Optional[torch.Tensor] = None
     coarseness_mask: Optional[torch.Tensor] = None
     coarseness_pred: Optional[torch.Tensor] = None
+    C_gaussians: Optional[torch.Tensor] = None
 
     def get_score(self, C):
         filtering_score = config["tracking"]["filtering_score"]
@@ -75,6 +76,8 @@ class Frame:
                 self.scales = scale.clone()
                 self.coarseness_mask = mask.clone()
                 self.coarseness_pred = coarseness_pred.clone()
+                self.C_gaussians = C.clone()
+
 
                 # self.valid_match_i = torch.ones(X.shape[0], dtype=torch.bool, device=X.device)
                 # self.idx_j2i = torch.ones(X.shape[0], dtype=torch.bool, device=X.device)
@@ -90,6 +93,7 @@ class Frame:
                 self.offsets = mean.clone() - self.X_canon # only store offsets
                 self.rotations = rotation.clone()
                 self.scales = scale.clone()
+                
 
         elif filtering_mode == "recent":
             self.X_canon = X.clone()
@@ -109,25 +113,43 @@ class Frame:
             self.N = 1
         elif filtering_mode == "weighted_pointmap":
             self.X_canon = ((self.C * self.X_canon) + (C * X)) / (self.C + C)
-            
+            # if self.C_gaussians is None:
+            #     print(f"Initializing C_gaussians")
+            #     self.C_gaussians = C.clone()
             # Gaussian params
             gaussian_filtering_mode = ["weigtend_average", "recent", "first"][0]
 
             if gaussian_filtering_mode == "weigtend_average" and scale is not None and self.scales is not None:
+                # print(f"X.shape: {X.shape}, C.shape: {C.shape}, self.C.shape: {self.C.shape}")
                 # self.SH = ((self.C.unsqueeze(1) * self.SH) + (C.unsqueeze(1) * SH)) / self.C.unsqueeze(1)
                 self.SH = SH.clone()
                 # print(f"C shape: {C.shape}, SH shape: {SH.shape}")
-                self.opacities = ((self.C * self.opacities) + (C * opacity)) / (self.C  + C)
-                self.offsets = ((self.C * self.offsets) + (C * (mean - X))) / (self.C  + C)
+                # average_where = (torch.argmax(self.coarseness_pred.float(), dim=0) == torch.argmax(coarseness_pred, dim=0).float())
+                average_where = (self.coarseness_pred[0,:]==coarseness_pred[0,:]) & (self.coarseness_pred[1,:]==coarseness_pred[1,:]) & (self.coarseness_pred[2,:]==coarseness_pred[2,:])
+                self.opacities[average_where,:] = ((self.C_gaussians[average_where,:] * self.opacities[average_where,:]) + (C[average_where,:] * opacity[average_where,:])) / (self.C_gaussians[average_where,:]  + C[average_where])
+                self.offsets[average_where,:] = ((self.C_gaussians[average_where,:] * self.offsets[average_where,:]) + (C[average_where,:] * (mean - X)[average_where,:])) / (self.C_gaussians[average_where,:]  + C[average_where,:])
                 # self.rotations = ((self.C * self.rotations) + (C * rotation)) / (self.C  + C)
-                self.scales = ((self.C * self.scales) + (C * scale)) / (self.C  + C)
-                self.rotations = slerp(self.rotations, rotation, self.C / (self.C + C))
+                self.scales[average_where,:] = ((self.C_gaussians[average_where,:] * self.scales[average_where,:]) + (C[average_where,:] * scale[average_where,:])) / (self.C_gaussians[average_where,:]  + C[average_where,:])
+                self.rotations[average_where,:] = slerp(self.rotations[average_where,:], rotation[average_where,:], self.C_gaussians[average_where,:] / (self.C_gaussians[average_where,:] + C[average_where,:]))
+                self.C_gaussians[average_where,:] = self.C_gaussians[average_where,:] + C[average_where,:]
+                # take new gaussians for the rest
+                self.opacities[~average_where,:] = opacity[~average_where,:]
+                self.offsets[~average_where,:] = (mean - X)[~average_where,:]
+                self.rotations[~average_where,:] = rotation[~average_where,:]
+                self.scales[~average_where,:] = scale[~average_where,:]
+                self.C_gaussians[~average_where,:] = C[~average_where,:]
+                self.coarseness_mask[~average_where] = mask[~average_where]
+                self.coarseness_pred[:,~average_where] = coarseness_pred[:,~average_where]
+
+
             elif gaussian_filtering_mode == "recent" and scale is not None:
                 self.SH = SH.clone()
                 self.opacities = opacity.clone()
                 self.offsets = mean.clone() - self.X_canon # only store offsets
                 self.rotations = rotation.clone()
                 self.scales = scale.clone()
+                self.coarseness_mask = mask
+                self.coarseness_pred = coarseness_pred
             elif gaussian_filtering_mode == "first" and scale is not None and self.N_updates == 1:
                 print("Save First Gaussian params")
                 self.SH = SH.clone()
@@ -137,8 +159,6 @@ class Frame:
                 self.scales = scale.clone()
             self.C = self.C + C
             self.N += 1
-            self.coarseness_mask = mask
-            self.coarseness_pred = coarseness_pred
             
         elif filtering_mode == "weighted_spherical":
 
@@ -278,6 +298,7 @@ class SharedStates:
         self.corresponding_frames = -1*torch.ones(3, device=device, dtype=torch.int).share_memory_()
         self.coarseness_mask = torch.zeros(h * w, device=device, dtype=torch.bool).share_memory_()
         self.coarseness_pred = torch.zeros(3, h * w, device=device, dtype=torch.bool).share_memory_()
+        self.C_gaussians = torch.zeros(h * w, 1, device=device, dtype=dtype).share_memory_()
         # fmt: on
 
     def set_frame(self, frame):
@@ -301,6 +322,7 @@ class SharedStates:
                 self.scales[:] = frame.scales
                 self.coarseness_mask[:] = frame.coarseness_mask
                 self.coarseness_pred[:] = frame.coarseness_pred
+                self.C_gaussians[:] = frame.C_gaussians
             if frame.valid_match_i is not None:
                 self.valid_match_i[:] = frame.valid_match_i
                 self.idx_j2i[:] = frame.idx_j2i
@@ -337,6 +359,7 @@ class SharedStates:
             frame.corresponding_frames = self.corresponding_frames
             frame.coarseness_mask = self.coarseness_mask
             frame.coarseness_pred = self.coarseness_pred
+            frame.C_gaussians = self.C_gaussians
             # frame.N = int(self.N[0])
             return frame
 
@@ -422,6 +445,7 @@ class SharedKeyframes:
         self.corresponding_frames = -1 * torch.ones(buffer, 3, device=device, dtype=torch.int).share_memory_()
         self.coarseness_mask = torch.zeros(buffer, h * w, device=device, dtype=torch.bool).share_memory_()
         self.coarseness_pred = torch.zeros(buffer, 3, h * w, device=device, dtype=torch.bool).share_memory_()
+        self.C_gaussians = torch.zeros(buffer, h * w, 1, device=device, dtype=dtype).share_memory_()
 
     def __getitem__(self, idx) -> Frame:
         with self.lock:
@@ -460,6 +484,7 @@ class SharedKeyframes:
                 kf.corresponding_frames = self.corresponding_frames[idx]
                 kf.coarseness_mask = self.coarseness_mask[idx]
                 kf.coarseness_pred = self.coarseness_pred[idx]
+                kf.C_gaussians = self.C_gaussians[idx]
             else:
                 print("get SH is None")
             return kf
@@ -497,6 +522,7 @@ class SharedKeyframes:
                 self.scales[idx] = value.scales
                 self.coarseness_mask[idx] = value.coarseness_mask
                 self.coarseness_pred[idx] = value.coarseness_pred
+                self.C_gaussians[idx] = value.C_gaussians
             else:
                 print("set SH is None")
             if value.valid_match_i is not None:

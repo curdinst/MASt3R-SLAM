@@ -524,10 +524,10 @@ def use_coarseness_prediction(model_output, img_sh):
     mask_used_gaussians[:,u_128, v_128] = True
     mask_used_gaussians = mask_used_gaussians.squeeze(0) # (b, h, w) -> (h, w)
     
-    pred_512['covariances'] = geometry.build_covariance(pred_512['scales'], pred_512['rotations'])
-    pred_256['covariances'] = geometry.build_covariance(pred_256['scales'], pred_256['rotations'])
-    pred_128['covariances'] = geometry.build_covariance(pred_128['scales'], pred_128['rotations'])
-    pred_combined = {}
+    # pred_512['covariances'] = geometry.build_covariance(pred_512['scales'], pred_512['rotations'])
+    # pred_256['covariances'] = geometry.build_covariance(pred_256['scales'], pred_256['rotations'])
+    # pred_128['covariances'] = geometry.build_covariance(pred_128['scales'], pred_128['rotations'])
+    # pred_combined = {}
 
     # mask_128_use_128 = torch.ones_like(mask_128_use_128).bool()
 
@@ -664,7 +664,7 @@ def resize_img(img, size, square_ok=False, return_transformation=False):
         # resize long side to 512
         img = _resize_pil_image(img, size)
     W, H = img.size
-    print(f"After resize: W: {W}, H: {H}, size: {size}, square_ok: {square_ok}")
+    # print(f"After resize: W: {W}, H: {H}, size: {size}, square_ok: {square_ok}")
     # print(f"W: {W}, H: {H}, size: {size}, square_ok: {square_ok}")
     cx, cy = W // 2, H // 2
     if size == 224:

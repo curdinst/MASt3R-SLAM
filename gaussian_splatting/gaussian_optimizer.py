@@ -120,10 +120,11 @@ class GaussianOptimizer:
             keyframe = keyframes[frame_idx]
             idx = 0
             self.averaged_masks[frame_idx] = torch.ones((self.intrinsics["H"]*self.intrinsics["W"]), dtype=torch.bool, device=self.device)
-            for idx, other_frame in enumerate(keyframe.corresponding_frames.tolist()):
-                if other_frame == -1: break
+            print(f"self.intrinsics['H'], self.intrinsics['W']: {self.intrinsics['H']}, {self.intrinsics['W']}")
+            for idx, other_frame_idx in enumerate(keyframe.corresponding_frames.tolist()):
+                if other_frame_idx == -1: break
                 valid_mask = ~keyframe.valid_match_i[idx,...]
-                self.averaged_masks[other_frame] = self.averaged_masks[other_frame] & valid_mask
+                self.averaged_masks[other_frame_idx] = self.averaged_masks[other_frame_idx] & valid_mask & keyframes[other_frame_idx].coarseness_mask # only average where coarsedness mask is true
                 # TODO: simplify above
 
     def prepare_viewpoint(self, keyframe, frame_idx, valid):
@@ -197,17 +198,19 @@ class GaussianOptimizer:
 
     def average_correspondances(self, keyframes: SharedKeyframes, keyframe, gaussians, valid):
         (w_means, sh, opacities_new, scales_new, w_rotations) = gaussians
-        for idx, other_frame in enumerate(keyframe.corresponding_frames.tolist()):
-            if other_frame == -1: break
-            # if other_frame != frame_idx-1: continue #TODO remove---------------------------------------
+        coarseness_new = torch.argmax(keyframe.coarseness_pred.float(), dim=0)
+        for idx, other_frame_idx in enumerate(keyframe.corresponding_frames.tolist()):
+            if other_frame_idx == -1: break
+            # if other_frame_idx != frame_idx-1: continue #TODO remove---------------------------------------
             idx_j2i = keyframe.idx_j2i[idx]
-            old_keyframe = keyframes[other_frame]
+            old_keyframe = keyframes[other_frame_idx]
+            coarseness_other = torch.argmax(old_keyframe.coarseness_pred.float(), dim=0)
             # print(f"valid_masks[frame_idx] {self.valid_masks[frame_idx].shape}")
             # print(f"valid_masks[frame_idx] {self.valid_masks[frame_idx]}")
             # print(f"keyframe.valid_match_i[frame_idx] {keyframe.valid_match_i.shape}")
             # print(f"keyframe.valid_match_i[frame_idx] {keyframe.valid_match_i[idx]}")
             # print(f"idx {idx}")
-            to_average = valid & keyframe.valid_match_i[idx,...]
+            to_average = valid & keyframe.valid_match_i[idx,...] & keyframes[other_frame_idx].coarseness_mask
             old_kf_scales = (old_keyframe.T_WC.data[0,-1] * old_keyframe.scales)
             old_kf_opacities_new = old_keyframe.opacities
             old_kf_w_rotations = quat_mult(old_keyframe.T_WC.data, old_keyframe.rotations)
@@ -217,8 +220,17 @@ class GaussianOptimizer:
             else:
                 old_kf_w_means = old_keyframe.T_WC.act(old_keyframe.X_canon + old_keyframe.offsets)
             old_kf_sh = old_keyframe.SH
-            idx_j2i = idx_j2i[to_average]
+
+            mask_now = idx_j2i[to_average] # get the indices of the gaussians to average
+
             old_kf_mask = to_average
+
+            same_coarseness = (coarseness_new[mask_now] == coarseness_other[old_kf_mask])
+            print(f"same_coarseness sum:{same_coarseness.shape} {same_coarseness.sum()} for frames {keyframe.frame_id} and {old_keyframe.frame_id}")
+            
+            # old_kf_mask = old_kf_mask[same_coarseness]
+            # mask_now = mask_now[same_coarseness]
+
             gaussians_old_kf = (
                 old_kf_w_means[old_kf_mask],
                 old_kf_sh[old_kf_mask],
@@ -226,7 +238,6 @@ class GaussianOptimizer:
                 old_kf_scales[old_kf_mask],
                 old_kf_w_rotations[old_kf_mask]
             )
-            mask_now = idx_j2i
             gaussians_now = (
                 w_means[mask_now],
                 sh[mask_now],
@@ -282,8 +293,9 @@ class GaussianOptimizer:
                 # self.valid_masks[frame_idx] = l1_mask
                 # print(f"l1_loss_mask shape reshaped {l1_loss_mask.shape}")
                 # print(f"l1_mask shape {l1_mask.shape}, l1_mask sum {l1_mask.sum()}")
+
             if self.config["gaussians"]["average_correspondances"]:
-                valid = valid & self.averaged_masks[frame_idx] & l1_mask
+                valid = valid & self.averaged_masks[frame_idx] & l1_mask & keyframe.coarseness_mask
             elif self.config["gaussians"]["mask_correspondances"]:
                 # correspondence_mask = keyframe.valid_match_i[0, ...] | keyframe.valid_match_i[1, ...] | keyframe.valid_match_i[2, ...] #valid_match_i: (3, H*W)
                 correspondence_mask = self.averaged_masks[frame_idx]

@@ -58,13 +58,16 @@ import torch
 
 # ------------- Transfer a part of the model --------------
 
+print("Exit checkpoint editor")
+exit()
+mast3r = torch.load('checkpoints/MASt3R_gaussians_3stage_single_map_v1.pth', map_location='cpu')
+# mast3r = torch.load('checkpoints/MASt3R_gaussians_3stage_v0.pth', map_location='cpu')
 
-mast3r = torch.load('checkpoints/MASt3R_gaussians_3stage_single_map.pth', map_location='cpu')
 # splatt3r = torch.load('/home/curdinst/repos/splatt3r/checkpoints/keep/25-08-11-20-19-28_epoch=15_step=65376.ckpt')
 # splatt3r = torch.load('/home/curdinst/repos/splatt3r/checkpoints/keep/splatt3r_3stage_freq_pred.ckpt')
 # splatt3r = torch.load('/home/curdinst/repos/splatt3r/checkpoints/25-08-29-17-43-59_epoch=01_step=04086.ckpt', map_location='cpu')
-# splatt3r = torch.load('/home/curdinst/repos/splatt3r/checkpoints/keep/25-08-29-02-41-17_epoch=10_step=22473_pred2.ckpt', map_location='cpu')
-splatt3r = torch.load('/home/curdinst/repos/splatt3r/checkpoints/keep/25-08-29-21-12-25_epoch=15_step=32688_pred1.ckpt', map_location='cpu')
+splatt3r = torch.load('/home/curdinst/repos/splatt3r/checkpoints/keep/25-08-29-02-41-17_epoch=10_step=22473_pred2.ckpt', map_location='cpu')
+# splatt3r = torch.load('/home/curdinst/repos/splatt3r/checkpoints/keep/25-08-29-21-12-25_epoch=15_step=32688_pred1.ckpt', map_location='cpu')
 
 
 
@@ -78,7 +81,7 @@ splatt3r = torch.load('/home/curdinst/repos/splatt3r/checkpoints/keep/25-08-29-2
 
 mast3r_gaussians = mast3r.copy()
 for key in splatt3r['state_dict'].keys():
-    if 'gaussian' not in key or 'downstream_head2' in key:
+    if 'gaussian' not in key or 'downstream_head1' in key:
         continue
     print(f"key: {key}")
     key_modified = key.replace('encoder.', '')
@@ -95,4 +98,4 @@ for key in splatt3r['state_dict'].keys():
 # print(MASt3R_gaussians_v1['model']['downstream_head1.dpt.act_postprocess.0.0.weight'])
 
 
-torch.save(mast3r_gaussians, 'checkpoints/MASt3R_gaussians_3stage_single_map.pth')
+torch.save(mast3r_gaussians, 'checkpoints/MASt3R_gaussians_3stage_single_map_v1.pth')

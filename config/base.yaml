@@ -7,7 +7,7 @@ used_dataset: "datasets/replica/office2"
 # used_dataset: "datasets/replica/room0"
 
 stop_at_frame: 900
-stop_at_keyframe: 30
+stop_at_keyframe: 2
 run_backend: True
 run_gaussian_optimizer: False
 gaussians:
@@ -16,8 +16,8 @@ gaussians:
   window_size: 10 # 2 newest frames are subtracted -> window_size = 2 newest frames + N random frames
   tracking_itr_num: 100
   c_conf_threshold: 1.5
-  mask_correspondances: True
-  average_correspondances: False
+  mask_correspondances: False
+  average_correspondances: True
   fuse_min_Kl_div: False
   l1_mask: False
   l1_threshold: 0.1

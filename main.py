@@ -254,7 +254,7 @@ if __name__ == "__main__":
 
     # model = load_mast3r(device=device, path="checkpoints/MASt3R_gaussians_v1.pth")
     # model = load_mast3r(device=device, path="checkpoints/MASt3R_gaussians_3stage_v0.pth")
-    model = load_mast3r(device=device, path="checkpoints/MASt3R_gaussians_3stage_single_map.pth")
+    model = load_mast3r(device=device, path="checkpoints/MASt3R_gaussians_3stage_single_map_v1.pth")
     
     # model = load_mast3r(device=device)
     model.share_memory()
