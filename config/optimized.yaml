@@ -10,8 +10,8 @@ gaussians:
   average_correspondances: False
   fuse_min_Kl_div: False
   l1_mask: True
-  l1_threshold: 0.1
+  # l1_threshold: 0.1
   # densify_at_it_nr: [10, 20]
-  fuse_gaussians: True
+  fuse_gaussians: False
   use_depth: False
   

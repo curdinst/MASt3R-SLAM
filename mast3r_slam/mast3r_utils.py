@@ -422,16 +422,16 @@ def mast3r_asymmetric_inference(model, frame_i, frame_j):
     (res21_512, res21_256, res21_128, res21_coarseness_pred) = res21
 
     # Save frame_i.img as a PNG image
-    img_to_save = frame_i.img.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()  # Convert tensor to numpy array
-    img_to_save = ((img_to_save /2 + 0.5) * 255).astype(np.uint8)  # Scale to 0-255 and convert to uint8
-    img_to_save = Image.fromarray(img_to_save)  # Convert to PIL Image
-    os.makedirs("output_images", exist_ok=True)  # Ensure the output directory exists
-    img_to_save.save("logs/frame_i.png")  # Save the image
-    img_to_save = frame_j.img.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()  # Convert tensor to numpy array
-    img_to_save = ((img_to_save /2 + 0.5) * 255).astype(np.uint8)  # Scale to 0-255 and convert to uint8
-    img_to_save = Image.fromarray(img_to_save)  # Convert to PIL Image
-    os.makedirs("output_images", exist_ok=True)  # Ensure the output directory exists
-    img_to_save.save("logs/frame_j.png")  # Save the image
+    # img_to_save = frame_i.img.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()  # Convert tensor to numpy array
+    # img_to_save = ((img_to_save /2 + 0.5) * 255).astype(np.uint8)  # Scale to 0-255 and convert to uint8
+    # img_to_save = Image.fromarray(img_to_save)  # Convert to PIL Image
+    # os.makedirs("output_images", exist_ok=True)  # Ensure the output directory exists
+    # img_to_save.save("logs/frame_i.png")  # Save the image
+    # img_to_save = frame_j.img.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()  # Convert tensor to numpy array
+    # img_to_save = ((img_to_save /2 + 0.5) * 255).astype(np.uint8)  # Scale to 0-255 and convert to uint8
+    # img_to_save = Image.fromarray(img_to_save)  # Convert to PIL Image
+    # os.makedirs("output_images", exist_ok=True)  # Ensure the output directory exists
+    # img_to_save.save("logs/frame_j.png")  # Save the image
 
     # res11_512['sh'], res21_512['sh'] = add_frame_color_to_sh(frame_i=frame_i, frame_j=frame_j, SHii=res11_512['sh'], SHji=res21_512['sh'])
     img_sh11 = get_img_sh(frame_i, res11_512['sh'])
@@ -472,9 +472,9 @@ def use_coarseness_prediction(model_output, img_sh):
 
     classes = torch.argmax(coarseness, dim=1) # coarseness: (b, c, h, w) -> classes: (b, h, w)
     # print(f"calasses.shape: {classes.shape}, coarseness.shape: {coarseness.shape}")   
-    mask_512_use = (classes == 0) & valid
-    mask_256_use = (classes == 1) & valid
-    mask_128_use = (classes == 2) & valid
+    mask_512_use = (classes == 0)
+    mask_256_use = (classes == 1)
+    mask_128_use = (classes == 2)
 
     coarseness_pred = torch.cat((mask_512_use, mask_256_use, mask_128_use), dim=0) # out: (3, h, w)
 

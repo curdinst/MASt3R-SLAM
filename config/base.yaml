@@ -1,13 +1,17 @@
-use_calib: False
+use_calib: True
 
 # used_dataset: "datasets/tum/rgbd_dataset_freiburg1_desk"
 used_dataset: "datasets/replica/office2"
 # used_dataset: "datasets/replica/office1"
 # used_dataset: "datasets/replica/office3"
 # used_dataset: "datasets/replica/room0"
+dataset:
+  subsample: 4
+  img_downsample: 1
+  center_principle_point: True
 
 stop_at_frame: 900
-stop_at_keyframe: 2
+stop_at_keyframe: 20
 run_backend: True
 run_gaussian_optimizer: False
 gaussians:
@@ -17,10 +21,10 @@ gaussians:
   tracking_itr_num: 100
   c_conf_threshold: 1.5
   mask_correspondances: False
-  average_correspondances: True
-  fuse_min_Kl_div: False
-  l1_mask: False
-  l1_threshold: 0.1
+  average_correspondances: False
+  fuse_min_Kl_div: True
+  l1_mask: True
+  l1_threshold: 2 #0.1
   # densify_at_it_nr: [10, 20]
   pre_pose_optimization: False
   post_pose_optimization: False
@@ -78,10 +82,10 @@ gaussians:
 
 single_thread: False
 
-dataset:
-  subsample: 4
-  img_downsample: 1
-  center_principle_point: True
+# dataset:
+#   subsample: 4
+#   img_downsample: 1
+#   center_principle_point: True
 
 matching:
   max_iter: 10
