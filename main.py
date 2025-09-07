@@ -102,7 +102,8 @@ def run_gaussian_optimization(cfg, dataset, model, states: SharedStates, keyfram
         states.set_gauss_opt_frameid(len_frames - 2)
         gaussian_optimizer.optimize(keyframes=keyframes, iters=num_iterations, path=savedir)
         states.set_gauss_opt_frameid(len_frames - 1)
-
+    # time.sleep(5)
+    # gaussian_optimizer.optimize(keyframes=keyframes, iters=num_iterations, path=savedir)
     gaussian_optimizer.save_results(savedir, keyframes)
     return
 

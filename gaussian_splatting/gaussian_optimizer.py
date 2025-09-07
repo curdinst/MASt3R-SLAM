@@ -109,8 +109,13 @@ class GaussianOptimizer:
         self.optimized_poses = {}
         self.N_optimized_kf_gaussians = {}
         self.averaged_masks = {}
+        self.l1_masks = {}
         self.final_valid_masks = {}
-
+        self.last_optimized_gaussians = None
+        self.last_optimized_means = {}
+        self.last_optimized_constrained = {}
+        
+        # self.config["use_calib"] = False
         if not self.config["use_calib"]:
             assert not (self.config["gaussians"]["num_iterations"]  > 0) and not self.config["gaussians"]["l1_mask"], "No calibration used, cannot use gaussian optimisation or l1_mask"
         if self.config["gaussians"]["l1_mask"] or self.config["gaussians"]["num_iterations"] > 0:
@@ -176,9 +181,12 @@ class GaussianOptimizer:
         scales_new = (keyframe.T_WC.data[0,-1] * keyframe.scales)
         w_rotations = quat_mult(keyframe.T_WC.data, keyframe.rotations)
 
-        if self.config["use_calib"]:
+        if False and self.config["use_calib"]:
             means_in = constrain_points_to_ray(keyframe.img_shape.flatten()[:2], keyframe.X_canon[None], keyframe.K)[0, ...]
+            diff = means_in - keyframe.X_canon
+            print(f"diff in transform_gaussians: {diff.abs().mean()}, max: {diff.max()}, min: {diff.min()}")
         else:
+            print(f"using X_canon directly for means")
             means_in = keyframe.X_canon
 
         means_2d = einops.rearrange(means_in, "(h w) c -> 1 h w c", h=self.intrinsics["H"], w=self.intrinsics["W"])
@@ -220,7 +228,8 @@ class GaussianOptimizer:
             old_kf_scales = (old_keyframe.T_WC.data[0,-1] * old_keyframe.scales)
             old_kf_opacities_new = old_keyframe.opacities
             old_kf_w_rotations = quat_mult(old_keyframe.T_WC.data, old_keyframe.rotations)
-            if self.config["use_calib"]:
+
+            if False and self.config["use_calib"]:
                 X_ray = constrain_points_to_ray(old_keyframe.img_shape.flatten()[:2], old_keyframe.X_canon[None], old_keyframe.K)
                 old_kf_w_means = old_keyframe.T_WC.act(X_ray[0, ...] + old_keyframe.offsets)
             else:
@@ -294,22 +303,25 @@ class GaussianOptimizer:
 
             l1_mask = torch.ones_like(valid, dtype=torch.bool, device=self.device)
             if self.config["gaussians"]["l1_mask"] and frame_idx > 0:
-                print(f"get l1 mask for frame {frame_idx}")
-                render_pkg = render(self.viewpoint_stack[frame_idx], self.gaussians, self.pipeline_params, self.background)
-                image = render_pkg["render"]
-                # Save the rendered image for debugging or visualization
-                # ssim_loss_val = ssim(image, self.viewpoint_stack[frame_idx].original_image)
-                # l1_loss_val = l1_loss(image, self.viewpoint_stack[frame_idx].original_image)
-                l1_loss_img = torch.abs(image - self.viewpoint_stack[frame_idx].original_image).mean(dim=0).reshape(-1)
+                if frame_idx not in self.l1_masks.keys():
+                    print(f"get l1 mask for frame {frame_idx}")
+                    render_pkg = render(self.viewpoint_stack[frame_idx], self.gaussians, self.pipeline_params, self.background)
+                    image = render_pkg["render"]
+                    # Save the rendered image for debugging or visualization
+                    # ssim_loss_val = ssim(image, self.viewpoint_stack[frame_idx].original_image)
+                    # l1_loss_val = l1_loss(image, self.viewpoint_stack[frame_idx].original_image)
+                    l1_loss_img = torch.abs(image - self.viewpoint_stack[frame_idx].original_image).mean(dim=0).reshape(-1)
 
-                mapped_regions = image.mean(dim=0) > 0.01
-                print(f"mean_loss {l1_loss_img.mean()}, mapped_regions sum {mapped_regions.sum()}")
-                mean_loss_mapped = l1_loss_img[mapped_regions.reshape(-1)].mean()
-                print(f"mean_loss_mapped {mean_loss_mapped}")
-                l1_threshold = mean_loss_mapped * self.config["gaussians"]["l1_threshold"]
-                print(f"l1_threshold {l1_threshold}")
+                    mapped_regions = image.mean(dim=0) > 0.01
+                    print(f"mean_loss {l1_loss_img.mean()}, mapped_regions sum {mapped_regions.sum()}")
+                    mean_loss_mapped = l1_loss_img[mapped_regions.reshape(-1)].mean()
+                    print(f"mean_loss_mapped {mean_loss_mapped}")
+                    l1_threshold = mean_loss_mapped * self.config["gaussians"]["l1_threshold"]
+                    print(f"l1_threshold {l1_threshold}")
 
-                l1_mask = (l1_loss_img > l1_threshold)
+                    l1_mask = (l1_loss_img > l1_threshold)
+                    self.l1_masks[frame_idx] = l1_mask
+                l1_mask = self.l1_masks[frame_idx]
                 # Save l1_mask as an image for debugging or visualization
 
                 # self.valid_masks[frame_idx] = l1_mask
@@ -470,6 +482,8 @@ class GaussianOptimizer:
 
     def save_gaussians_to_keyframes(self, keyframes: SharedKeyframes):
         idx = 0
+        self.last_optimized_gaussians = self.gaussians
+
         for frame_idx in range(self.num_keyframes):
             valid = self.final_valid_masks[frame_idx]
             num_valid = valid.sum()
@@ -494,18 +508,21 @@ class GaussianOptimizer:
             scales_w = torch.exp(self.gaussians._scaling[idx:idx+num_valid]) * T_CW.data[0,-1]
             rotations_w = self.gaussians._rotation[idx:idx+num_valid]
             rotations_kf = quat_mult(T_CW.data, rotations_w)
-            means_w = T_CW.act(self.gaussians._xyz[idx:idx+num_valid])
+            means_kf = T_CW.act(self.gaussians._xyz[idx:idx+num_valid])
 
             # print("scaling:", self.gaussians._scaling[idx:idx+num_valid])
             # print("scales kf :", keyframes[frame_idx].scales)
-            keyframe.update_gaussians(
+            last_constrained = keyframe.update_gaussians(
                 valid_mask=valid,
                 scale=scales_w,
                 rotation=rotations_kf,
                 SH=einops.rearrange(self.gaussians._features_dc[idx:idx+num_valid], "wh d c -> wh c d"),
                 opacity=self.gaussians._opacity[idx:idx+num_valid],
-                mean=means_w,
+                mean=means_kf,
             )
+            print(f"keyframe.offsets.mean(): {keyframe.offsets.mean()}, keyframe.offsets.std(): {keyframe.offsets.std()}, max: {keyframe.offsets.max()}, min: {keyframe.offsets.min()}")
+            self.last_optimized_means[frame_idx] = means_kf
+            self.last_optimized_constrained[frame_idx] = last_constrained
             keyframes[frame_idx] = keyframe
             idx += num_valid
         print(f"num gaussians: {self.gaussians._xyz.shape[0]:,}"+f", idx: {idx}")
@@ -521,9 +538,29 @@ class GaussianOptimizer:
         self.prepare_gaussian_map(keyframes=keyframes, save_results=save_results)
         self.run_optimisation(keyframes=keyframes, iters=iters, save_results=save_results, path=path)
         if save_results:
+            # diff_scales = self.last_optimized_gaussians._scaling - self.gaussians._scaling
+            # print(f"scale diffs: mean {diff_scales.abs().mean()}, max {torch.max(diff_scales)}, min {torch.min(diff_scales)}")
+            # diff_rotations = self.last_optimized_gaussians._rotation - self.gaussians._rotation
+            # print(f"rotation diffs: mean {diff_rotations.abs().mean()}, max {torch.max(diff_rotations)}, min {torch.min(diff_rotations)}")
+            # diff_means = self.last_optimized_gaussians._xyz - self.gaussians._xyz
+            # print(f"mean diffs: mean {diff_means.abs().mean()}, max {torch.max(diff_means)}, min {torch.min(diff_means)}")
+            # diff_opacities = self.last_optimized_gaussians._opacity - self.gaussians._opacity
+            # print(f"opacity diffs: mean {diff_opacities.abs().mean()}, max {torch.max(diff_opacities)}, min {torch.min(diff_opacities)}")
+            # diff_sh = self.last_optimized_gaussians._features_dc - self.gaussians._features_dc
+            # print(f"sh diffs: mean {diff_sh.abs().mean()}, max {torch.max(diff_sh)}, min {torch.min(diff_sh)}")
+
+            # for frame_idx in range(self.num_keyframes):
+            #     X_canon_old = self.last_optimized_means[frame_idx]
+            #     # diff_means = X_canon_old - X_canon_new
+            #     # print(f"Keyframe {frame_idx} canon mean diffs: mean {diff_means.abs().mean()}, max {torch.max(diff_means)}, min {torch.min(diff_means)}")
+            #     x_constrained_old = self.last_optimized_constrained[frame_idx]
+            #     keyframe = keyframes[frame_idx]
+            #     means_in = constrain_points_to_ray(keyframe.img_shape.flatten()[:2], keyframe.X_canon[None], keyframe.K)[0, ...]
+            #     diff_constrained = x_constrained_old - means_in
+            #     print(f"Keyframe {frame_idx} constrained mean diffs: mean {diff_constrained.abs().mean()}, max {torch.max(diff_constrained)}, min {torch.min(diff_constrained)}")
             self.draw_cameras()
 
-        
+
         self.save_gaussians_to_keyframes(keyframes)
         if save_results:
             for kf_idx in range(self.num_keyframes):

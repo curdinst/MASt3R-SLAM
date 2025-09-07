@@ -201,9 +201,13 @@ class Frame:
         #     self.N_guass = 1
         #     self.N_gauss_updates = 1
         #     return
-        if config["use_calib"]:
+        if False and config["use_calib"]:
+            print("Constraining gaussians to rays in update_gaussians")
             X_canon = constrain_points_to_ray(self.img_shape[0,...], self.X_canon[None, ...], self.K)[0, ...]
+            diff = X_canon - self.X_canon
+            print(f"diff in update_gaussians: {diff.abs().mean()}, max: {diff.max()}, min: {diff.min()}")
         else:
+            print("Not Constraining gaussians to rays in update_gaussians")
             X_canon = self.X_canon
         if filtering_mode == "recent":
             self.SH[valid_mask] = SH.clone()
@@ -219,7 +223,7 @@ class Frame:
         #     self.scales = ((self.C * self.scales) + (C * scale)) / self.C
         #     self.N_gauss += 1
         self.N_gauss_updates += 1
-        return
+        return X_canon
 
     # @added
     # def update_gaussian_mask(self, valid_kf, idx_f2k, is_tracking, corresponding_kf_idx=None):
