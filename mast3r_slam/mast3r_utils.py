@@ -291,12 +291,14 @@ def mast3r_decode_symmetric_batch(
         pos2 = pos_j[b][None]
         res11, res21 = decoder(model, feat1, feat2, pos1, pos2, shape_i[b], shape_j[b])
         res22, res12 = decoder(model, feat2, feat1, pos2, pos1, shape_j[b], shape_i[b])
-
+        # if config["gaussians"]["coarseness_splatt3r"]:
         (res11_512, res11_256, res11_128, res11_coarseness_pred) = res11
         (res21_512, res21_256, res21_128, res21_coarseness_pred) = res21
         (res22_512, res22_256, res22_128, res22_coarseness_pred) = res22
         (res12_512, res12_256, res12_128, res12_coarseness_pred) = res12
         res = [res11_512, res21_512, res22_512, res12_512]
+        # else:
+        #     res = [res11, res21, res22, res12]
 
         # res = [res11, res21, res22, res12]
         Xb, Cb, Db, Qb = zip(
@@ -418,29 +420,25 @@ def mast3r_asymmetric_inference(model, frame_i, frame_j):
     shape1, shape2 = frame_i.img_true_shape, frame_j.img_true_shape
 
     res11, res21 = decoder(model, feat1, feat2, pos1, pos2, shape1, shape2)
-    (res11_512, res11_256, res11_128, res11_coarseness_pred) = res11
-    (res21_512, res21_256, res21_128, res21_coarseness_pred) = res21
+    if config["gaussians"]["coarseness_splatt3r"]:
+        (res11_512, res11_256, res11_128, res11_coarseness_pred) = res11
+        (res21_512, res21_256, res21_128, res21_coarseness_pred) = res21
 
-    # Save frame_i.img as a PNG image
-    # img_to_save = frame_i.img.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()  # Convert tensor to numpy array
-    # img_to_save = ((img_to_save /2 + 0.5) * 255).astype(np.uint8)  # Scale to 0-255 and convert to uint8
-    # img_to_save = Image.fromarray(img_to_save)  # Convert to PIL Image
-    # os.makedirs("output_images", exist_ok=True)  # Ensure the output directory exists
-    # img_to_save.save("logs/frame_i.png")  # Save the image
-    # img_to_save = frame_j.img.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()  # Convert tensor to numpy array
-    # img_to_save = ((img_to_save /2 + 0.5) * 255).astype(np.uint8)  # Scale to 0-255 and convert to uint8
-    # img_to_save = Image.fromarray(img_to_save)  # Convert to PIL Image
-    # os.makedirs("output_images", exist_ok=True)  # Ensure the output directory exists
-    # img_to_save.save("logs/frame_j.png")  # Save the image
-
-    # res11_512['sh'], res21_512['sh'] = add_frame_color_to_sh(frame_i=frame_i, frame_j=frame_j, SHii=res11_512['sh'], SHji=res21_512['sh'])
-    img_sh11 = get_img_sh(frame_i, res11_512['sh'])
-    img_sh21 = get_img_sh(frame_j, res21_512['sh'])
-    res11_512, mask11_used_gaussians, coarseness_pred11 = use_coarseness_prediction(res11, img_sh11)
-    res21_512, mask21_used_gaussians, coarseness_pred21 = use_coarseness_prediction(res21, img_sh21)
-    MASKS = torch.stack([mask11_used_gaussians, mask21_used_gaussians])
-    COARSE_PRED = torch.stack([coarseness_pred11, coarseness_pred21])
-    res = [res11_512, res21_512]
+        img_sh11 = get_img_sh(frame_i, res11_512['sh'])
+        img_sh21 = get_img_sh(frame_j, res21_512['sh'])
+        res11_512, mask11_used_gaussians, coarseness_pred11 = use_coarseness_prediction(res11, img_sh11)
+        res21_512, mask21_used_gaussians, coarseness_pred21 = use_coarseness_prediction(res21, img_sh21)
+        MASKS = torch.stack([mask11_used_gaussians, mask21_used_gaussians])
+        COARSE_PRED = torch.stack([coarseness_pred11, coarseness_pred21])
+        res = [res11_512, res21_512]
+    else:
+        res11 = res11[0]
+        res21 = res21[0]
+        img_sh11 = get_img_sh(frame_i, res11['sh'])
+        img_sh21 = get_img_sh(frame_j, res21['sh'])
+        res11['sh'] = res11['sh'] + img_sh11
+        res21['sh'] = res21['sh'] + img_sh21
+        res = [res11, res21]
     
     X, C, D, Q, S, R, SH, O, M  = zip(
         *[(r["pts3d"][0], r["conf"][0], r["desc"][0], r["desc_conf"][0], r["scales"][0], r["rotations"][0], r["sh"][0], r["opacities"][0], r["means"][0]) for r in res]
@@ -450,8 +448,9 @@ def mast3r_asymmetric_inference(model, frame_i, frame_j):
     X, C, D, Q = torch.stack(X), torch.stack(C), torch.stack(D), torch.stack(Q)
     S, R, SH, O, M = torch.stack(S), torch.stack(R), torch.stack(SH), torch.stack(O), torch.stack(M)
     X, C, D, Q = downsample(X, C, D, Q)
-    return X, C, D, Q, S, R, SH, O, M, MASKS, COARSE_PRED
-
+    if config["gaussians"]["coarseness_splatt3r"]:
+        return X, C, D, Q, S, R, SH, O, M, MASKS, COARSE_PRED
+    return X, C, D, Q, S, R, SH, O, M
 
 def use_coarseness_prediction(model_output, img_sh):
     (pred_512, pred_256, pred_128, coarseness) = model_output
@@ -587,8 +586,10 @@ def get_img_sh(frame, SH):
     return new_sh
 
 def mast3r_match_asymmetric(model, frame_i, frame_j, idx_i2j_init=None):
-    X, C, D, Q, S, R, SH, O, M, MASKS, COARSE_PRED = mast3r_asymmetric_inference(model, frame_i, frame_j)
-
+    if config["gaussians"]["coarseness_splatt3r"]:
+        X, C, D, Q, S, R, SH, O, M, MASKS, COARSE_PRED = mast3r_asymmetric_inference(model, frame_i, frame_j)
+    else:
+        X, C, D, Q, S, R, SH, O, M = mast3r_asymmetric_inference(model, frame_i, frame_j)
     b, h, w = X.shape[:-1]
     # 2 outputs per inference
     b = b // 2
@@ -613,18 +614,13 @@ def mast3r_match_asymmetric(model, frame_i, frame_j, idx_i2j_init=None):
     SHii, SHji = einops.rearrange(SH, "b h w c d -> b (h w) c d")
     Oii, Oji = einops.rearrange(O, "b h w c -> b (h w) c")
     Mii, Mji = einops.rearrange(M, "b h w c -> b (h w) c")
-    Maskii, Maskji = einops.rearrange(MASKS, "b h w -> b (h w)")
-    Coarse_predii, Coarse_predji = einops.rearrange(COARSE_PRED, "b c h w -> b c (h w)")
+    if config["gaussians"]["coarseness_splatt3r"]:
+        Maskii, Maskji = einops.rearrange(MASKS, "b h w -> b (h w)")
+        Coarse_predii, Coarse_predji = einops.rearrange(COARSE_PRED, "b c h w -> b c (h w)")
 
-    # # add frame colors to sh colors
-    # new_sh1 = torch.zeros_like(SHii)
-    # new_sh2 = torch.zeros_like(SHji)
-    # new_sh1[..., 0] = sh_utils.RGB2SH(einops.rearrange(frame_i.img/2.0+0.5, 'b c h w -> b (h w) c'))
-    # new_sh2[..., 0] = sh_utils.RGB2SH(einops.rearrange(frame_j.img/2.0+0.5, 'b c h w -> b (h w) c'))
-    # SHii = SHii + new_sh1
-    # SHji = SHji + new_sh2
-
-    gaussian_params = (Sii, Rii, SHii, Oii, Mii, Maskii, Coarse_predii, Sji, Rji, SHji, Oji, Mji, Maskji, Coarse_predji)
+        gaussian_params = (Sii, Rii, SHii, Oii, Mii, Maskii, Coarse_predii, Sji, Rji, SHji, Oji, Mji, Maskji, Coarse_predji)
+        return idx_i2j, valid_match_j, Xii, Cii, Qii, Xji, Cji, Qji, gaussian_params
+    gaussian_params = (Sii, Rii, SHii, Oii, Mii, Sji, Rji, SHji, Oji, Mji)
     return idx_i2j, valid_match_j, Xii, Cii, Qii, Xji, Cji, Qji, gaussian_params
 
 

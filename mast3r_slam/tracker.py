@@ -59,11 +59,15 @@ class FrameTracker:
         valid_match_k = valid_match_k[0]
 
         Qk = torch.sqrt(Qff[idx_f2k] * Qkf)
-        (Sff, Rff, SHff, Off, Mff, Maskff, Coarse_predff, Skf, Rkf, SHkf, Okf, Mkf, Maskkf, Coarse_predkf) = gaussian_params
 
-
-        # Update keyframe pointmap after registration (need pose)
-        frame.update_pointmap(Xff, Cff, Sff, Rff, SHff, Off, Mff, Maskff, Coarse_predff)
+        if config["gaussians"]["coarseness_splatt3r"]:
+            (Sff, Rff, SHff, Off, Mff, Maskff, Coarse_predff, Skf, Rkf, SHkf, Okf, Mkf, Maskkf, Coarse_predkf) = gaussian_params
+            # Update keyframe pointmap after registration (need pose)
+            frame.update_pointmap(Xff, Cff, Sff, Rff, SHff, Off, Mff, Maskff, Coarse_predff)
+        else:
+            (Sff, Rff, SHff, Off, Mff, Skf, Rkf, SHkf, Okf, Mkf) = gaussian_params
+            # Update keyframe pointmap after registration (need pose)
+            frame.update_pointmap(Xff, Cff, Sff, Rff, SHff, Off, Mff)
 
         # print(f"update gaussians of frame {frame.frame_id}")
         # frame.update_gaussians(Sff, Rff, SHff, Off, Mff)
@@ -130,7 +134,12 @@ class FrameTracker:
         # print(f"Xkf.mean after scaling {Xkk.mean()}")
 
         # Gaussian parameters
-        (Sff, Rff, SHff, Off, Mff, Maskff, Coarse_predff, Skf, Rkf, SHkf, Okf, Mkf, Maskkf, Coarse_predkf) = gaussian_params
+        if config["gaussians"]["coarseness_splatt3r"]:
+            (Sff, Rff, SHff, Off, Mff, Maskff, Coarse_predff, Skf, Rkf, SHkf, Okf, Mkf, Maskkf, Coarse_predkf) = gaussian_params
+        else:
+            (Sff, Rff, SHff, Off, Mff, Skf, Rkf, SHkf, Okf, Mkf) = gaussian_params
+            Maskkf = None
+            Coarse_predkf = None
         Mkk = T_CkCf.act(Mkf)
         Rkk = quat_mult(T_CkCf.data, Rkf)
         # Rkk = Rkf

@@ -74,8 +74,9 @@ class Frame:
                 self.offsets = mean.clone() - self.X_canon # only store offsets
                 self.rotations = rotation.clone()
                 self.scales = scale.clone()
-                self.coarseness_mask = mask.clone()
-                self.coarseness_pred = coarseness_pred.clone()
+                if mask is not None and coarseness_pred is not None:
+                    self.coarseness_mask = mask.clone()
+                    self.coarseness_pred = coarseness_pred.clone()
                 self.C_gaussians = C.clone()
 
 
@@ -125,7 +126,10 @@ class Frame:
                 self.SH = SH.clone()
                 # print(f"C shape: {C.shape}, SH shape: {SH.shape}")
                 # average_where = (torch.argmax(self.coarseness_pred.float(), dim=0) == torch.argmax(coarseness_pred, dim=0).float())
-                average_where = (self.coarseness_pred[0,:]==coarseness_pred[0,:]) & (self.coarseness_pred[1,:]==coarseness_pred[1,:]) & (self.coarseness_pred[2,:]==coarseness_pred[2,:])
+                if mask is not None and coarseness_pred is not None:
+                    average_where = (self.coarseness_pred[0,:]==coarseness_pred[0,:]) & (self.coarseness_pred[1,:]==coarseness_pred[1,:]) & (self.coarseness_pred[2,:]==coarseness_pred[2,:])
+                else:
+                    average_where = torch.ones_like(C, dtype=torch.bool, device=C.device).squeeze()
                 self.opacities[average_where,:] = ((self.C_gaussians[average_where,:] * self.opacities[average_where,:]) + (C[average_where,:] * opacity[average_where,:])) / (self.C_gaussians[average_where,:]  + C[average_where])
                 self.offsets[average_where,:] = ((self.C_gaussians[average_where,:] * self.offsets[average_where,:]) + (C[average_where,:] * (mean - X)[average_where,:])) / (self.C_gaussians[average_where,:]  + C[average_where,:])
                 # self.rotations = ((self.C * self.rotations) + (C * rotation)) / (self.C  + C)
@@ -138,8 +142,9 @@ class Frame:
                 self.rotations[~average_where,:] = rotation[~average_where,:]
                 self.scales[~average_where,:] = scale[~average_where,:]
                 self.C_gaussians[~average_where,:] = C[~average_where,:]
-                self.coarseness_mask[~average_where] = mask[~average_where]
-                self.coarseness_pred[:,~average_where] = coarseness_pred[:,~average_where]
+                if mask is not None and coarseness_pred is not None:
+                    self.coarseness_mask[~average_where] = mask[~average_where]
+                    self.coarseness_pred[:,~average_where] = coarseness_pred[:,~average_where]
 
 
             elif gaussian_filtering_mode == "recent" and scale is not None:
@@ -148,8 +153,10 @@ class Frame:
                 self.offsets = mean.clone() - self.X_canon # only store offsets
                 self.rotations = rotation.clone()
                 self.scales = scale.clone()
-                self.coarseness_mask = mask
-                self.coarseness_pred = coarseness_pred
+                if mask is not None and coarseness_pred is not None:
+
+                    self.coarseness_mask = mask
+                    self.coarseness_pred = coarseness_pred
             elif gaussian_filtering_mode == "first" and scale is not None and self.N_updates == 1:
                 print("Save First Gaussian params")
                 self.SH = SH.clone()
@@ -324,6 +331,7 @@ class SharedStates:
                 self.offsets[:] = frame.offsets
                 self.rotations[:] = frame.rotations
                 self.scales[:] = frame.scales
+            if frame.coarseness_mask is not None:
                 self.coarseness_mask[:] = frame.coarseness_mask
                 self.coarseness_pred[:] = frame.coarseness_pred
                 self.C_gaussians[:] = frame.C_gaussians
@@ -486,6 +494,7 @@ class SharedKeyframes:
                 kf.valid_match_i = self.valid_match_i[idx]
                 kf.idx_j2i = self.idx_j2i[idx]
                 kf.corresponding_frames = self.corresponding_frames[idx]
+            if self.coarseness_mask[idx] is not None:
                 kf.coarseness_mask = self.coarseness_mask[idx]
                 kf.coarseness_pred = self.coarseness_pred[idx]
                 kf.C_gaussians = self.C_gaussians[idx]
@@ -524,6 +533,7 @@ class SharedKeyframes:
                 self.offsets[idx] = value.offsets
                 self.rotations[idx] = value.rotations
                 self.scales[idx] = value.scales
+            if value.coarseness_mask is not None:
                 self.coarseness_mask[idx] = value.coarseness_mask
                 self.coarseness_pred[idx] = value.coarseness_pred
                 self.C_gaussians[idx] = value.C_gaussians

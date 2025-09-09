@@ -1,10 +1,10 @@
 use_calib: False
 
 # used_dataset: "datasets/tum/rgbd_dataset_freiburg1_desk"
-# used_dataset: "datasets/replica/office2"
+used_dataset: "datasets/replica/office2"
 # used_dataset: "datasets/replica/office1"
 # used_dataset: "datasets/replica/office3"
-used_dataset: "datasets/replica/room0"
+# used_dataset: "datasets/replica/room0"
 dataset:
   subsample: 4
   img_downsample: 1
@@ -15,6 +15,7 @@ stop_at_keyframe: 20
 run_backend: True
 run_gaussian_optimizer: False
 gaussians:
+  coarseness_splatt3r: True
   init_lr: 3.0 #0.05 #6.0
   num_iterations: 0
   window_size: 10 # 2 newest frames are subtracted -> window_size = 2 newest frames + N random frames

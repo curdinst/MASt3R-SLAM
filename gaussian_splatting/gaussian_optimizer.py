@@ -189,12 +189,15 @@ class GaussianOptimizer:
             print(f"using X_canon directly for means")
             means_in = keyframe.X_canon
 
-        means_2d = einops.rearrange(means_in, "(h w) c -> 1 h w c", h=self.intrinsics["H"], w=self.intrinsics["W"])
-        coarseness_pred_2d = einops.rearrange(keyframe.coarseness_pred, "c (h w) -> c h w", h=self.intrinsics["H"], w=self.intrinsics["W"])
-        coarse_pred_means = use_coarseness_prediction_for_means(means_2d, coarseness_pred_2d) # Avarages the means for coarser gaussians
-        coarse_pred_means_1d = einops.rearrange(coarse_pred_means, "1 h w c -> (h w) c")
+        if self.config["gaussians"]["coarseness_splatt3r"]:
+            means_2d = einops.rearrange(means_in, "(h w) c -> 1 h w c", h=self.intrinsics["H"], w=self.intrinsics["W"])
+            coarseness_pred_2d = einops.rearrange(keyframe.coarseness_pred, "c (h w) -> c h w", h=self.intrinsics["H"], w=self.intrinsics["W"])
+            coarse_pred_means = use_coarseness_prediction_for_means(means_2d, coarseness_pred_2d) # Avarages the means for coarser gaussians
+            coarse_pred_means_1d = einops.rearrange(coarse_pred_means, "1 h w c -> (h w) c")
 
-        w_means = keyframe.T_WC.act(coarse_pred_means_1d+keyframe.offsets)
+            w_means = keyframe.T_WC.act(coarse_pred_means_1d+keyframe.offsets)
+        else:
+            w_means = keyframe.T_WC.act(means_in + keyframe.offsets)
         # if self.config["use_calib"]:
         #     print(f"keyframe.img_shape.flatten()[:2]: {keyframe.img_shape.flatten()[:2]}")
         #     print(f"keyframe.X_canon.shape: {keyframe.X_canon.shape}")
@@ -212,13 +215,15 @@ class GaussianOptimizer:
 
     def average_correspondances(self, keyframes: SharedKeyframes, keyframe, gaussians, valid):
         (w_means, sh, opacities_new, scales_new, w_rotations) = gaussians
-        coarseness_new = torch.argmax(keyframe.coarseness_pred.float(), dim=0) # w*h coarseness
+        if self.config["gaussians"]["coarseness_splatt3r"]:
+            coarseness_new = torch.argmax(keyframe.coarseness_pred.float(), dim=0) # w*h coarseness
         for idx, other_frame_idx in enumerate(keyframe.corresponding_frames.tolist()):
             if other_frame_idx == -1: break
             # if other_frame_idx != frame_idx-1: continue #TODO remove---------------------------------------
             idx_j2i = keyframe.idx_j2i[idx]
             old_keyframe = keyframes[other_frame_idx]
-            coarseness_other = torch.argmax(old_keyframe.coarseness_pred.float(), dim=0) # w*h coarseness
+            if self.config["gaussians"]["coarseness_splatt3r"]:
+                coarseness_other = torch.argmax(old_keyframe.coarseness_pred.float(), dim=0) # w*h coarseness
             # print(f"valid_masks[frame_idx] {self.valid_masks[frame_idx].shape}")
             # print(f"valid_masks[frame_idx] {self.valid_masks[frame_idx]}")
             # print(f"keyframe.valid_match_i[frame_idx] {keyframe.valid_match_i.shape}")
@@ -240,14 +245,15 @@ class GaussianOptimizer:
             idx_i2j = torch.argsort(idx_j2i)
             old_kf_mask = to_average
 
-            same_coarseness = (coarseness_new[mask_now] == coarseness_other[old_kf_mask])
-            print(f"same_coarseness sum:{same_coarseness.shape} {same_coarseness.sum()} for frames {keyframe.frame_id} and {old_keyframe.frame_id}")
-            print(f"old_kf_mask.shape: {old_kf_mask.shape}, old_kf_mask.sum(): {old_kf_mask.sum()}")
-            print(f"test {mask_now[same_coarseness].shape}")
-            different_coarseness = idx_i2j[mask_now[~same_coarseness]]
-            print(f"before: {self.averaged_masks[other_frame_idx].sum()}")
-            self.averaged_masks[other_frame_idx][different_coarseness] = True # if coarseness is different, do not average
-            print(f"after: {self.averaged_masks[other_frame_idx].sum()}")
+            if self.config["gaussians"]["coarseness_splatt3r"]:
+                same_coarseness = (coarseness_new[mask_now] == coarseness_other[old_kf_mask])
+                print(f"same_coarseness sum:{same_coarseness.shape} {same_coarseness.sum()} for frames {keyframe.frame_id} and {old_keyframe.frame_id}")
+                print(f"old_kf_mask.shape: {old_kf_mask.shape}, old_kf_mask.sum(): {old_kf_mask.sum()}")
+                print(f"test {mask_now[same_coarseness].shape}")
+                different_coarseness = idx_i2j[mask_now[~same_coarseness]]
+                print(f"before: {self.averaged_masks[other_frame_idx].sum()}")
+                self.averaged_masks[other_frame_idx][different_coarseness] = True # if coarseness is different, do not average
+                print(f"after: {self.averaged_masks[other_frame_idx].sum()}")
             # mask_now = mask_now[same_coarseness]
             # old_kf_mask[same_coarseness]
             # print(f"old_kf_mask... {old_kf_mask[same_coarseness]}")
@@ -268,7 +274,10 @@ class GaussianOptimizer:
                 scales_new[mask_now],
                 w_rotations[mask_now]
             )
-            gaussians_avg = self.mean_gaussians(gaussians_now, gaussians_old_kf, same_coarseness)
+            if self.config["gaussians"]["coarseness_splatt3r"]:
+                gaussians_avg = self.mean_gaussians(gaussians_now, gaussians_old_kf, same_coarseness)
+            else:
+                gaussians_avg = self.mean_gaussians(gaussians_now, gaussians_old_kf)
             (
                 w_means[mask_now],
                 sh[mask_now],
@@ -328,8 +337,9 @@ class GaussianOptimizer:
                 # print(f"l1_loss_mask shape reshaped {l1_loss_mask.shape}")
                 # print(f"l1_mask shape {l1_mask.shape}, l1_mask sum {l1_mask.sum()}")
 
+            keyframe_coarseness_mask = keyframe.coarseness_mask if self.config["gaussians"]["coarseness_splatt3r"] else torch.ones_like(valid, dtype=torch.bool, device=self.device)
             if self.config["gaussians"]["average_correspondances"]:
-                valid = valid & self.averaged_masks[frame_idx] & l1_mask & keyframe.coarseness_mask
+                valid = valid & self.averaged_masks[frame_idx] & l1_mask & keyframe_coarseness_mask
             elif self.config["gaussians"]["mask_correspondances"]:
                 # correspondence_mask = keyframe.valid_match_i[0, ...] | keyframe.valid_match_i[1, ...] | keyframe.valid_match_i[2, ...] #valid_match_i: (3, H*W)
                 correspondence_mask = self.averaged_masks[frame_idx]
@@ -341,12 +351,12 @@ class GaussianOptimizer:
                 # plt.imshow(correspondence_mask_img, cmap="gray")
                 # plt.savefig(f"logs/correspondence_mask_frame_{frame_idx}.png")
                 # plt.close()
-                valid = valid & correspondence_mask & keyframe.coarseness_mask
+                valid = valid & correspondence_mask & keyframe_coarseness_mask
             else:
                 print("not using correspondence masks")
-                valid = valid & l1_mask & keyframe.coarseness_mask
+                valid = valid & l1_mask & keyframe_coarseness_mask
 
-            print(f"num coaresness: {keyframe.coarseness_mask.sum()} for frame {frame_idx}")
+            print(f"num coaresness: {keyframe_coarseness_mask.sum()} for frame {frame_idx}")
 
             if self.config["gaussians"]["fuse_gaussians"] and (((frame_idx == self.num_keyframes-1 or self.num_keyframes < 3) and not save_results) or not self.config["run_gaussian_optimizer"]):
                 print("fusing gaussians of keyframe", frame_idx)
@@ -461,13 +471,14 @@ class GaussianOptimizer:
                     # plt.imshow((gt_img_rearranged- a)/(b-a) )
                     plt.savefig(path / f"render_{frame_index}.png")
                     plt.close()
-                    plt.figure()
-                    plt.title(f"frame_index {frame_index} coarseness prediction")
-                    plt.axis("off")
-                    coarseness_pred_img = einops.rearrange(keyframes[frame_index].coarseness_pred.float(), " c (h w) -> h w c", h=self.intrinsics["H"], w=self.intrinsics["W"]).cpu().detach().numpy()
-                    plt.imshow(coarseness_pred_img)
-                    plt.savefig(path / f"coarseness_pred_{frame_index}.png")
-                    plt.close()
+                    if self.config["gaussians"]["coarseness_splatt3r"]:
+                        plt.figure()
+                        plt.title(f"frame_index {frame_index} coarseness prediction")
+                        plt.axis("off")
+                        coarseness_pred_img = einops.rearrange(keyframes[frame_index].coarseness_pred.float(), " c (h w) -> h w c", h=self.intrinsics["H"], w=self.intrinsics["W"]).cpu().detach().numpy()
+                        plt.imshow(coarseness_pred_img)
+                        plt.savefig(path / f"coarseness_pred_{frame_index}.png")
+                        plt.close()
 
             if not save_results:
                 loss_mapping.backward()
@@ -635,15 +646,19 @@ class GaussianOptimizer:
         # self.median_depth = get_median_depth(depth, opacity)
         return render_pkg
 
-    def mean_gaussians(self, gaussians_1, gaussians_2, same_coarseness):
+    def mean_gaussians(self, gaussians_1, gaussians_2, same_coarseness=None):
         (means_1, features_dc_1, opacities_1, scales_1, rotations_1) = gaussians_1
         (means_2, features_dc_2, opacities_2, scales_2, rotations_2) = gaussians_2
         dists = torch.sqrt(((means_1 - means_2)**2).sum(dim=1))
         mean_dists = torch.mean(dists)
-        print(f"mean diffs: {mean_dists}, max: {torch.max(dists)}, min: {torch.min(dists)}")
+        # print(f"mean diffs: {mean_dists}, max: {torch.max(dists)}, min: {torch.min(dists)}")
         inlier_mask = dists < mean_dists
-        print(f"inlier_mask shape {inlier_mask.shape}, inlier_mask sum {inlier_mask.sum()}")
-        inlier_mask = inlier_mask & same_coarseness
+        # print(f"inlier_mask shape {inlier_mask.shape}, inlier_mask sum {inlier_mask.sum()}")
+        if same_coarseness is None:
+            inlier_mask = inlier_mask
+        else:
+            inlier_mask = inlier_mask & same_coarseness
+
         features_dc_1[inlier_mask] = (features_dc_1[inlier_mask] + features_dc_2[inlier_mask]) / 2.0
         opacities_1[inlier_mask] = (opacities_1[inlier_mask] + opacities_2[inlier_mask]) / 2.0
         if self.config["gaussians"]["fuse_min_Kl_div"]:
